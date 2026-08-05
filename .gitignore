@@ -1,0 +1,17 @@
+node_modules/
+.npm-cache/
+.dev.vars
+.env
+.env.*
+!.env.example
+.wrangler/
+dist/
+coverage/
+backups/
+exports/
+*.csv
+*.sql
+!migrations/**/*.sql
+npm-debug.log*
+.DS_Store
+Thumbs.db

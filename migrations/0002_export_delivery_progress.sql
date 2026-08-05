@@ -1,0 +1,3 @@
+ALTER TABLE processed_updates
+ADD COLUMN export_progress TEXT NOT NULL DEFAULT 'NONE'
+CHECK (export_progress IN ('NONE', 'CUSTOMERS_SENT', 'TRANSACTIONS_SENT', 'BOTH_SENT'));

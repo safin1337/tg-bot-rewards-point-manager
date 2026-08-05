@@ -1,0 +1,82 @@
+export type TransactionType = "PURCHASE" | "MANUAL_ADD" | "REDEEM";
+
+export interface Customer {
+  id: number;
+  whatsappNumber: string;
+  phoneLast4: string;
+  phoneLast5: string;
+  pointBalanceUnits: number;
+  roundedRewardBdt: number;
+  creationTelegramUpdateId: number | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface RewardTransaction {
+  id: number;
+  customerId: number;
+  transactionType: TransactionType;
+  purchaseAmountBdt: number | null;
+  pointsDeltaUnits: number;
+  balanceBeforeUnits: number;
+  balanceAfterUnits: number;
+  roundedRewardBeforeBdt: number;
+  roundedRewardAfterBdt: number;
+  transactionRewardRoundedBdt: number;
+  note: string | null;
+  telegramUpdateId: number;
+  createdAtUtc: string;
+}
+
+export type Operation =
+  | "PURCHASE"
+  | "MANUAL_ADD"
+  | "REDEEM"
+  | "BALANCE"
+  | "HISTORY"
+  | "ADD_CUSTOMER"
+  | "EXPORT";
+
+export type SelectionMode = "SUFFIX" | "FULL_NUMBER";
+
+export type WorkflowStep =
+  | "SELECT_MODE"
+  | "AWAIT_SEARCH"
+  | "SHOW_RESULTS"
+  | "AWAIT_FULL_NUMBER"
+  | "CONFIRM_CREATE_FOR_OPERATION"
+  | "AWAIT_ADD_CUSTOMER_NUMBER"
+  | "CONFIRM_ADD_CUSTOMER"
+  | "AWAIT_PURCHASE_AMOUNT"
+  | "CONFIRM_PURCHASE"
+  | "AWAIT_POINT_AMOUNT"
+  | "AWAIT_NOTE"
+  | "CONFIRM_MANUAL_ADD"
+  | "CONFIRM_REDEEM"
+  | "SHOW_HISTORY"
+  | "SELECT_EXPORT";
+
+export interface StatePayload {
+  token: string;
+  purchaseAmountBdt?: number;
+  pointUnits?: number;
+  note?: string;
+  expectedBalanceUnits?: number;
+  pendingPhone?: string;
+}
+
+export interface ConversationState {
+  administratorTelegramId: string;
+  operationStartedUpdateId: number;
+  activeOperation: Operation;
+  currentStep: WorkflowStep;
+  selectionMode: SelectionMode | null;
+  selectedCustomerId: number | null;
+  selectedWhatsappNumber: string | null;
+  searchDigits: string | null;
+  searchPage: number;
+  payload: StatePayload;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  expiresAtUtc: string;
+}

@@ -1,0 +1,23 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "soulshop-rewards",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-07-29",
+	"workers_dev": true,
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"CONVERSATION_STATE_TTL_MINUTES": "30",
+		"EXPORT_MAX_ROWS": "10000",
+		"EXPORT_MAX_BYTES": "8000000"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "soulshop-rewards-db",
+			"database_id": "e5442ada-e252-4a8a-b525-5d24ac3d3c60",
+			"migrations_dir": "migrations"
+		}
+	]
+}

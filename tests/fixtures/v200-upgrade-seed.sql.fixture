@@ -1,0 +1,53 @@
+INSERT INTO customers (
+  id, whatsapp_number, phone_last4, phone_last5, point_balance_units,
+  rounded_reward_bdt, creation_telegram_update_id, created_at_utc, updated_at_utc
+) VALUES (
+  1, '+8801712345678', '5678', '45678', 100,
+  0, 1, '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z'
+);
+
+INSERT INTO transactions (
+  customer_id, transaction_type, purchase_amount_bdt, points_delta_units,
+  balance_before_units, balance_after_units, rounded_reward_before_bdt,
+  rounded_reward_after_bdt, transaction_reward_rounded_bdt, note,
+  telegram_update_id, created_at_utc
+) VALUES (
+  1, 'MANUAL_ADD', NULL, 100, 0, 100, 0, 0, 0, NULL, 10,
+  '2026-08-01T00:00:00.000Z'
+);
+
+INSERT INTO mutation_receipts (
+  telegram_update_id, customer_id, mutation_type, status, points_delta_units,
+  balance_before_units, balance_after_units, rounded_reward_before_bdt,
+  rounded_reward_after_bdt, transaction_reward_rounded_bdt, completed_at_utc
+) VALUES
+  (10, 1, 'MANUAL_ADD', 'COMPLETED', 100, 0, 100, 0, 0, 0,
+   '2026-08-01T00:00:00.000Z'),
+  (99, 1, 'MANUAL_ADD', 'COMPLETED', 100, 0, 100, 0, 0, 0,
+   '2026-07-01T00:00:00.000Z');
+
+WITH RECURSIVE n(value) AS (
+  SELECT 1
+  UNION ALL
+  SELECT value + 1 FROM n WHERE value < 41
+)
+INSERT INTO leaderboard_reset_receipts (
+  telegram_update_id, period_type, period_key, generation, status,
+  reset_at_utc, administrator_telegram_id
+)
+SELECT
+  1000 + value, 'WEEK', '2026-08-03', 1, 'COMPLETED',
+  '2026-08-07T00:00:00.000Z', '123456789'
+FROM n;
+
+WITH RECURSIVE n(value) AS (
+  SELECT 1
+  UNION ALL
+  SELECT value + 1 FROM n WHERE value < 41
+)
+INSERT INTO processed_updates (
+  telegram_update_id, update_type, status, processed_at_utc, export_progress
+)
+SELECT
+  2000 + value, 'EXPORT', 'COMPLETED', '2026-08-07T00:00:00.000Z', 'BOTH_SENT'
+FROM n;

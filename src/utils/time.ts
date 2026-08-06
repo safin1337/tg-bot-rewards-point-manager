@@ -20,6 +20,28 @@ export const nowIso = (): string => new Date().toISOString();
 export const addMinutesIso = (iso: string, minutes: number): string =>
   new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
 
+export const subtractUtcCalendarMonthsClamped = (date: Date, months: number): Date => {
+  if (!Number.isSafeInteger(months) || months < 0 || Number.isNaN(date.getTime())) {
+    throw new Error("Invalid calendar-month calculation.");
+  }
+  const targetMonthStart = new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth() - months,
+    1,
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds()
+  ));
+  const targetMonthLastDay = new Date(Date.UTC(
+    targetMonthStart.getUTCFullYear(),
+    targetMonthStart.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
+  targetMonthStart.setUTCDate(Math.min(date.getUTCDate(), targetMonthLastDay));
+  return targetMonthStart;
+};
+
 export const formatDhakaDateTime = (iso: string): string => {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "Invalid date";

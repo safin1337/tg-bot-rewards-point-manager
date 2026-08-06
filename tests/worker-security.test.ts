@@ -23,6 +23,10 @@ describe("environment and update validation", () => {
         message: { message_id: 4, chat: { id: 3 } }
       }
     })?.kind).toBe("callback");
+    expect(parseTelegramUpdate({
+      update_id: 5,
+      callback_query: { id: "missing-message", from: { id: 3 }, data: "cancel" }
+    })).toMatchObject({ kind: "callback", callbackQuery: { message: null } });
     expect(parseTelegramUpdate({ update_id: 3, edited_message: {} })).toBeNull();
     expect(parseTelegramUpdate({ update_id: 4, callback_query: { id: "x" } })).toBeNull();
   });

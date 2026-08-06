@@ -173,8 +173,16 @@ export const leaderboardPeriodsKeyboard = (
   ]
 });
 
-export const leaderboardResultKeyboard = (token: string): InlineKeyboardMarkup => ({
+export const leaderboardResultKeyboard = (
+  type: LeaderboardPeriodType,
+  periodIndex: number,
+  token: string
+): InlineKeyboardMarkup => ({
   inline_keyboard: [
+    [{
+      text: "🔄 Refresh",
+      callback_data: `lbv:${type === "WEEK" ? "w" : "m"}:${periodIndex}:${token}`
+    }],
     [{ text: "⬅️ Leaderboard Menu", callback_data: `lb:back:${token}` }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]

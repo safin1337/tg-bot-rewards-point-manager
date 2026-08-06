@@ -89,6 +89,15 @@ export class RewardMutationService {
 
     const customer = await this.customers.findById(input.customerId);
     if (customer === null) throw new Error("Customer not found.");
+    if (
+      customer.latestMutationTelegramUpdateId !== null
+      && input.telegramUpdateId <= customer.latestMutationTelegramUpdateId
+    ) {
+      throw new DomainError(
+        "BALANCE_CONFLICT",
+        "This mutation update is older than the customer's latest completed mutation."
+      );
+    }
     if (customer.pointBalanceUnits !== input.expectedBalanceUnits) {
       throw new DomainError("BALANCE_CONFLICT", "The balance changed. Please review and try again.");
     }
@@ -120,6 +129,7 @@ export class RewardMutationService {
       this.customers.balanceUpdateStatement(
         customer.id,
         customer.pointBalanceUnits,
+        input.telegramUpdateId,
         signedDelta,
         after,
         roundedAfter,
@@ -156,6 +166,7 @@ export class RewardMutationService {
         monthlyPeriodKey
       }),
       this.transactions.pruneStatement(customer.id),
+      this.receipts.pruneCompletedStatement(customer.id),
       this.leaderboards.retentionStatement(recordedAt),
       this.receipts.retentionGuardStatement(receiptValues)
     );

@@ -69,6 +69,18 @@ describe("newest-40 detailed transaction retention", () => {
     for (let index = 1; index <= 41; index += 1) {
       await mutate(service, customer, 1_000 + index, balance, 100);
       balance += 100;
+      if (index === 39 || index === 40) {
+        const boundary = await env.DB.prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM transactions WHERE customer_id = ?) AS transaction_count,
+             (SELECT COUNT(*) FROM mutation_receipts
+              WHERE customer_id = ? AND status = 'COMPLETED') AS receipt_count`
+        ).bind(customer.id, customer.id).first<{
+          transaction_count: number;
+          receipt_count: number;
+        }>();
+        expect(boundary).toEqual({ transaction_count: index, receipt_count: index });
+      }
     }
 
     const rows = await env.DB.prepare(
@@ -86,7 +98,10 @@ describe("newest-40 detailed transaction retention", () => {
       pointBalanceUnits: 4_100,
       roundedRewardBdt: roundRewardBdt(4_100)
     });
-    expect(await new MutationReceiptRepository(env.DB).findCompleted(1_001)).not.toBeNull();
+    expect(await new MutationReceiptRepository(env.DB).findCompleted(1_001)).toBeNull();
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM mutation_receipts WHERE customer_id = ? AND status = 'COMPLETED'"
+    ).bind(customer.id).first<{ count: number }>())?.count).toBe(40);
   });
 
   it("caps PURCHASE, MANUAL_ADD, and REDEEM together and leaves another customer untouched", async () => {
@@ -141,7 +156,7 @@ describe("newest-40 detailed transaction retention", () => {
     expect(csv).toContain(",4040,2026-");
   });
 
-  it("replays a pruned update from its permanent receipt without changing any totals", async () => {
+  it("rejects a pruned delayed update through the customer high-water mark", async () => {
     const customer = await createCustomer(5, 5);
     const service = new RewardMutationService(env.DB, () => CURRENT_AT);
     const firstInput = {
@@ -163,9 +178,8 @@ describe("newest-40 detailed transaction retention", () => {
     const period = leaderboardPeriods("WEEK", CURRENT_AT)[0];
     if (period === undefined) throw new Error("Missing current week.");
     const before = await leaderboards().list(period);
-    const replay = await service.mutate(firstInput);
+    await expect(service.mutate(firstInput)).rejects.toThrow(/older than/i);
     const after = await leaderboards().list(period);
-    expect(replay.duplicate).toBe(true);
     expect((await customers().findById(customer.id))?.pointBalanceUnits).toBe(balance);
     expect(after).toEqual(before);
     expect((await transactions().listAll(100))).toHaveLength(40);
@@ -244,6 +258,35 @@ describe("mutation atomicity with receipts, leaderboards, and pruning", () => {
     expect((await customers().findById(customer.id))?.pointBalanceUnits).toBe(balance);
     expect(await transactions().countAllUpTo(100)).toBe(40);
     expect(await new MutationReceiptRepository(env.DB).findCompleted(8_040)).toBeNull();
+    const week = leaderboardPeriods("WEEK", CURRENT_AT)[0];
+    if (week === undefined) throw new Error("Missing current week.");
+    expect((await leaderboards().list(week))[0]?.earnedPointUnits).toBe(balance);
+  });
+
+  it("rolls back the 41st complete mutation when corresponding receipt pruning fails", async () => {
+    const customer = await createCustomer(81, 81);
+    const service = new RewardMutationService(env.DB, () => CURRENT_AT);
+    let balance = 0;
+    for (let index = 0; index < 40; index += 1) {
+      await mutate(service, customer, 81_000 + index, balance, 100);
+      balance += 100;
+    }
+    await env.DB.prepare(
+      `CREATE TRIGGER force_receipt_pruning_failure
+       BEFORE DELETE ON mutation_receipts
+       BEGIN SELECT RAISE(ABORT, 'forced receipt pruning failure'); END`
+    ).run();
+    try {
+      await expect(mutate(service, customer, 81_040, balance, 100)).rejects.toThrow();
+    } finally {
+      await env.DB.prepare("DROP TRIGGER force_receipt_pruning_failure").run();
+    }
+    expect((await customers().findById(customer.id))?.pointBalanceUnits).toBe(balance);
+    expect(await transactions().countAllUpTo(100)).toBe(40);
+    expect(await new MutationReceiptRepository(env.DB).findCompleted(81_040)).toBeNull();
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM mutation_receipts WHERE customer_id = ?"
+    ).bind(customer.id).first<{ count: number }>())?.count).toBe(40);
     const week = leaderboardPeriods("WEEK", CURRENT_AT)[0];
     if (week === undefined) throw new Error("Missing current week.");
     expect((await leaderboards().list(week))[0]?.earnedPointUnits).toBe(balance);
@@ -467,7 +510,7 @@ describe("independent current-period leaderboard resets", () => {
 });
 
 describe("V2 migration invariants", () => {
-  it("backfills permanent receipt columns independently from detailed transaction rows", async () => {
+  it("keeps completed receipt rows corresponding to retained transactions", async () => {
     const customer = await createCustomer(40, 40);
     await mutate(new RewardMutationService(env.DB, () => CURRENT_AT), customer, 40_000, 0, 10_000);
     const receipt = await new MutationReceiptRepository(env.DB).findCompleted(40_000);
@@ -478,7 +521,7 @@ describe("V2 migration invariants", () => {
       balanceAfterUnits: 10_000
     });
     await env.DB.prepare("DELETE FROM transactions WHERE telegram_update_id = 40000").run();
-    expect(await new MutationReceiptRepository(env.DB).findCompleted(40_000)).toEqual(receipt);
+    expect(await new MutationReceiptRepository(env.DB).findCompleted(40_000)).toBeNull();
   });
 
   it("passes foreign-key checks with all V2 tables", async () => {

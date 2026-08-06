@@ -20,7 +20,7 @@ export interface TelegramCallbackQuery {
   message: {
     message_id: number;
     chat: TelegramChat;
-  };
+  } | null;
 }
 
 export type TelegramUpdate =
@@ -72,12 +72,15 @@ const parseCallback = (value: unknown): TelegramCallbackQuery | null => {
   const from = parseUser(row.from);
   const messageRow = record(row.message);
   const chat = messageRow === null ? null : parseChat(messageRow.chat);
-  if (from === null || messageRow === null || chat === null || !safeInteger(messageRow.message_id)) return null;
+  if (from === null) return null;
+  const message = messageRow !== null && chat !== null && safeInteger(messageRow.message_id)
+    ? { message_id: messageRow.message_id, chat }
+    : null;
   return {
     id: row.id,
     from,
     data: row.data,
-    message: { message_id: messageRow.message_id, chat }
+    message
   };
 };
 

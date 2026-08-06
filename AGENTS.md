@@ -46,8 +46,12 @@ These rules are mandatory for every future coding agent working in this reposito
 - Zero-point customer creation never creates a reward transaction.
 - Preserve the atomic invariant: the update-ID claim, customer balance update, transaction insertion, applicable leaderboard increments, completed mutation receipt, and required retention pruning all succeed or all fail.
 - Use conditional expected-balance updates and a database-level nonnegative condition.
-- Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning may remove rows beyond the newest 40 per customer only after permanent mutation receipts preserve idempotency.
+- Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning atomically removes rows beyond the newest 40 per customer and their corresponding completed mutation receipts.
 - The newest-40 limit applies across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined. Customer balances and leaderboard aggregates must never depend on retained detailed rows.
+- Completed mutation receipts are bounded to the receipts corresponding to each customer's retained newest 40 transactions. Preserve the per-customer mutation update-ID high-water mark so a pruned delayed update cannot mutate a balance.
+- Retain leaderboard reset receipts only when they are both within the two-calendar-month UTC window and within the latest 40 overall, ordered by timestamp then Telegram update ID descending.
+- Preserve genuinely active processed-update leases. Bound eligible non-active processed updates to records both within the two-calendar-month UTC window and within the latest 40 overall.
+- Customers remain unbounded. Leaderboard periods and aggregates retain the current/previous-month and current/two-previous-week policy.
 - Preserve idempotency for customer creation, balance confirmations, and exports. Duplicate Telegram updates must not change balances twice.
 - Do not permanently mark a destructive update completed before its required mutation succeeds.
 - Validate D1 rows and conversation `payload_json`; do not trust type assertions over external data.
@@ -55,6 +59,9 @@ These rules are mandatory for every future coding agent working in this reposito
 - Persist the active operation's starting Telegram update ID and reject older delayed messages or callbacks so they cannot continue or replace a newer operation.
 - `/restart` preserves the operation but clears collected values. `/cancel` clears state.
 - Answer every callback promptly, including unauthorized callbacks.
+- Button-only transitions, confirmation results, search/history pagination, and leaderboard navigation normally edit the callback's bot message. Treat `message is not modified` as success and use one send-message fallback when editing is unavailable.
+- Complete a database mutation before displaying success. An edit failure after commit must never repeat or misreport the mutation; keep enough temporary state for an idempotent retry until the success display is delivered.
+- After typed administrator input, send the next bot response as a new message when editing an older bot message would break chronological order. Never edit administrator messages or document messages.
 
 ## Security and privacy
 
@@ -71,7 +78,7 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - D1 migrations are versioned under `migrations/` and must remain trackable despite the global `*.sql` ignore.
 - Never rewrite a previously deployed migration. Add a new migration.
-- Preserve existing customer balances during schema changes. Before approved retention pruning, backfill existing detailed history into permanent mutation receipts and applicable leaderboard aggregates.
+- Preserve existing customer balances during schema changes. Before approved retention pruning, backfill existing detailed history into mutation receipts, mutation update-ID high-water marks, and applicable leaderboard aggregates.
 - Keep business logic independent of Telegram transport and SQL inside repositories/migrations.
 - Use strict TypeScript and validated `unknown` for external inputs. Avoid `any`.
 - Do not leave required production paths as placeholders or TODOs.

@@ -70,7 +70,9 @@ export class MutationReceiptRepository {
            AND balance_after_units = ?
            AND EXISTS (
              SELECT 1 FROM customers
-             WHERE id = ? AND point_balance_units = ?
+             WHERE id = ?
+               AND point_balance_units = ?
+               AND latest_mutation_telegram_update_id = ?
            )
            AND EXISTS (
              SELECT 1 FROM transactions
@@ -118,6 +120,7 @@ export class MutationReceiptRepository {
         expectation.customerId,
         expectation.balanceAfterUnits,
         expectation.telegramUpdateId,
+        expectation.telegramUpdateId,
         expectation.customerId,
         expectation.mutationType,
         expectation.balanceAfterUnits,
@@ -132,6 +135,23 @@ export class MutationReceiptRepository {
       );
   }
 
+  pruneCompletedStatement(customerId: number): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `DELETE FROM mutation_receipts
+         WHERE customer_id = ?
+           AND status = 'COMPLETED'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM transactions AS transaction_row
+             WHERE transaction_row.telegram_update_id = mutation_receipts.telegram_update_id
+               AND transaction_row.customer_id = mutation_receipts.customer_id
+               AND transaction_row.transaction_type = mutation_receipts.mutation_type
+           )`
+      )
+      .bind(customerId);
+  }
+
   retentionGuardStatement(values: MutationReceiptValues): D1PreparedStatement {
     return this.db
       .prepare(
@@ -142,12 +162,33 @@ export class MutationReceiptRepository {
          )
          SELECT ?, ?, ?, 'PROCESSING', ?, ?, ?, ?, ?, ?, ?
          WHERE NOT EXISTS (
-           SELECT 1 FROM mutation_receipts
-           WHERE telegram_update_id = ? AND status = 'COMPLETED'
+           SELECT 1
+           FROM mutation_receipts AS receipt
+           JOIN transactions AS transaction_row
+             ON transaction_row.telegram_update_id = receipt.telegram_update_id
+            AND transaction_row.customer_id = receipt.customer_id
+            AND transaction_row.transaction_type = receipt.mutation_type
+           WHERE receipt.telegram_update_id = ?
+             AND receipt.status = 'COMPLETED'
          )
-            OR (
-              SELECT COUNT(*) FROM transactions WHERE customer_id = ?
-            ) > 40`
+         OR (SELECT COUNT(*) FROM transactions WHERE customer_id = ?) > 40
+         OR (
+           SELECT COUNT(*) FROM mutation_receipts
+           WHERE customer_id = ? AND status = 'COMPLETED'
+         ) > 40
+         OR EXISTS (
+           SELECT 1
+           FROM mutation_receipts AS receipt
+           WHERE receipt.customer_id = ?
+             AND receipt.status = 'COMPLETED'
+             AND NOT EXISTS (
+               SELECT 1
+               FROM transactions AS transaction_row
+               WHERE transaction_row.telegram_update_id = receipt.telegram_update_id
+                 AND transaction_row.customer_id = receipt.customer_id
+                 AND transaction_row.transaction_type = receipt.mutation_type
+             )
+         )`
       )
       .bind(
         values.telegramUpdateId,
@@ -161,6 +202,8 @@ export class MutationReceiptRepository {
         values.transactionRewardRoundedBdt,
         values.completedAtUtc,
         values.telegramUpdateId,
+        values.customerId,
+        values.customerId,
         values.customerId
       );
   }

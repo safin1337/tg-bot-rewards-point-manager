@@ -1,98 +1,110 @@
-# SoulShop V2.0.0 database design
+# SoulShop V2.0.1 database design
 
 ## Sources of truth
 
-`customers.point_balance_units` is the only source of truth for an available
-point balance. `customers.rounded_reward_bdt` is recalculated from that total
-with `floor((pointUnits + 20,000) / 40,000)` after each mutation.
+`customers` is unbounded. `customers.point_balance_units` is the only source
+of truth for an available point balance, and `rounded_reward_bdt` is
+recalculated from the total with
+`floor((pointUnits + 20,000) / 40,000)` after every mutation.
 
-Detailed `transactions` rows are not used to reconstruct balances or
-leaderboards. They are operational history snapshots retained under the
-newest-40 policy.
+Detailed `transactions` and operational receipt rows never reconstruct
+balances or leaderboards. `leaderboard_aggregates` is the independent source
+for leaderboard totals.
 
-## Detailed transaction retention
+## Exact retention matrix
 
-Each customer retains at most 40 detailed rows total across `PURCHASE`,
-`MANUAL_ADD`, and `REDEEM`. Newest rows are selected by:
+| Data | Retention |
+|---|---|
+| `customers` | Unbounded |
+| `transactions` | Latest 40 per customer across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined |
+| completed `mutation_receipts` | The receipts corresponding to those retained latest 40 transactions per customer |
+| `leaderboard_reset_receipts` | Both within two UTC calendar months and within the latest 40 overall |
+| eligible non-active `processed_updates` | Both within two UTC calendar months and within the latest 40 overall |
+| actively leased `processed_updates` | Preserved until the five-minute processing lease becomes stale |
+| leaderboard weeks | Current plus two previous weeks |
+| leaderboard months | Current plus previous month |
 
-1. `created_at_utc DESC`
-2. `id DESC`
+The two-calendar-month cutoff subtracts two months from the current UTC date
+and time and clamps the day to the last valid day of the target month. For
+example, `2026-08-31T12:34:56.789Z` produces
+`2026-06-30T12:34:56.789Z`, and `2024-04-30T00:00:00.000Z` produces
+`2024-02-29T00:00:00.000Z`. Rows strictly before the cutoff are deleted; a row
+exactly at the cutoff remains age-eligible. Latest-40 ordering uses the UTC
+timestamp descending and Telegram update ID descending as the stable
+tie-breaker.
 
-Insertion remains append-only during mutation creation. The same atomic D1
-batch then deletes only that customer's rows after position 40. A final guard
-requires the completed receipt to exist and the customer row count to be at
-most 40; otherwise the whole mutation rolls back.
+## Transactions and completed mutation receipts
 
-History pages and transaction CSV exports therefore contain retained detail
-only. Deleted detail cannot be recreated from balances or aggregates.
+Transaction retention order is `created_at_utc DESC, id DESC`. Mutation
+creation remains append-only, after which the same atomic D1 batch:
 
-## Permanent mutation receipts
+1. claims the Telegram update ID;
+2. conditionally updates the expected customer balance and mutation update-ID
+   high-water mark;
+3. inserts the detailed transaction;
+4. updates applicable weekly/monthly aggregates;
+5. completes the mutation receipt;
+6. deletes transactions beyond position 40 and their matching completed
+   receipts;
+7. prunes obsolete leaderboard periods; and
+8. runs a retention/integrity guard.
 
-`mutation_receipts.telegram_update_id` is the permanent unique identity of a
-completed balance mutation. A receipt stores:
+The `transactions_delete_completed_receipt` trigger enforces paired deletion.
+Any transaction or receipt pruning failure rolls back the balance, detailed
+row, aggregates, receipt completion, and all pruning. Processing receipts are
+not deleted by normal completed-receipt pruning. Claims are created and
+completed in one atomic D1 batch, so an active claim is uncommitted and cannot
+be observed by cleanup; migration `0006` removes only abandoned committed
+`PROCESSING` rows left by older or manually altered data.
 
-- customer and mutation type;
-- signed point-unit delta;
-- before/after point balances;
-- before/after rounded reward values;
-- rounded transaction reward value;
-- completion timestamp.
+`customers.latest_mutation_telegram_update_id` is backfilled during migration
+and advances atomically with each balance mutation. A retained receipt handles
+an exact retry and returns the stored snapshots. After an old transaction and
+receipt are pruned, the high-water mark rejects that delayed update instead of
+allowing it to mutate the balance again.
 
-Receipts do not reference detailed transaction IDs, so pruning cannot break
-them. A replay returns the stored snapshots plus the customer's current
-authoritative balance without applying the mutation or leaderboard increments
-again.
+History pages and transaction CSV exports contain only retained detail. A
+protected pre-pruning external backup is the only way to preserve older
+detailed history.
 
-The mutation batch performs, in order, the receipt claim, conditional balance
-update, detailed insertion, applicable leaderboard updates, receipt
-completion, pruning, period retention cleanup, and final invariant guard.
-D1 rolls the entire batch back if a statement fails.
+## Leaderboard aggregates and reset receipts
 
-## Leaderboard periods and aggregates
+Weekly keys are Monday dates in `Asia/Dhaka`; monthly keys are `YYYY-MM`.
+Only `PURCHASE` and `MANUAL_ADD` increment exact integer gross-earned units.
+`REDEEM` never changes leaderboard totals. Ranking order remains:
 
-`leaderboard_periods` identifies a `WEEK` or `MONTH` by an Asia/Dhaka calendar
-key and stores its active reset generation. Weekly keys are Monday dates such
-as `2026-08-03`; monthly keys are `YYYY-MM`.
+1. `earned_point_units DESC`;
+2. `first_qualifying_earning_at_utc ASC`; and
+3. `customer_id ASC`.
 
-`leaderboard_aggregates` is keyed by period type, period key, generation, and
-customer. It stores exact positive integer point units and the first qualifying
-earning timestamp. The top-10 index follows the complete ranking order:
+A reset atomically increments only the selected current period generation and
+removes obsolete aggregates for that generation. Reset receipt cleanup runs in
+the reset batch, changes no leaderboard total or generation, and enforces the
+two-calendar-month/latest-40 intersection described above.
 
-1. `earned_point_units DESC`
-2. `first_qualifying_earning_at_utc ASC`
-3. `customer_id ASC`
+## Processed Telegram updates and exports
 
-Only `PURCHASE` and `MANUAL_ADD` increment aggregates. `REDEEM` does not add or
-subtract gross earnings. Current plus two previous weeks and current plus one
-previous month are queryable; older periods are excluded and removed during
-normal aggregate maintenance.
+`processed_updates` uses a five-minute `PROCESSING` lease. A lease at or newer
+than the lease boundary is active and cannot be deleted or reclaimed. A
+strictly older lease is stale and may be reclaimed; stale processing rows are
+also eligible for bounded cleanup.
 
-## Reset generations
-
-`leaderboard_reset_receipts` permanently records the Telegram update ID,
-administrator ID, period type/key, resulting generation, and UTC reset time.
-A reset atomically increments only the selected current period's generation
-and removes obsolete aggregates from older generations of that period.
-
-Transactions and balances are not changed. The other period type is not
-changed. The first qualifying earning after reset creates the first aggregate
-for the new generation, so both totals and tie-break timestamps restart.
-
-Reset confirmation state stores the targeted period key. If the Dhaka week or
-month changes before confirmation, the callback is rejected instead of
-resetting the newly running period.
+`COMPLETED`, `FAILED`, and stale `PROCESSING` rows are eligible non-active
+records. Cleanup retains only the newest 40 age-eligible rows. Claim,
+completion, and failure paths run cleanup using the same captured UTC clock.
+Reclaiming a failed or stale export preserves `export_progress`, so an accepted
+document is not resent when a later document fails.
 
 ## Relationships and indexes
 
-- Detailed transactions, mutation receipts, and aggregates reference
-  `customers` with restrictive deletes.
-- Aggregates reference their period with `ON DELETE CASCADE`, allowing safe
-  removal of obsolete period data.
-- Receipt lookup is primary-key based; a customer/time index supports audit
-  diagnostics.
-- `idx_leaderboard_top10` constrains ranking reads to one period and generation.
-- Existing suffix and newest-history indexes remain unchanged.
+- Transactions, mutation receipts, and aggregates reference unbounded
+  customers with restrictive deletes.
+- Aggregates reference periods with `ON DELETE CASCADE`.
+- Customer suffix, transaction history, leaderboard ranking, mutation receipt,
+  reset receipt, and processed-update cleanup paths have matching indexes.
+- Retention queries use deterministic timestamp/update-ID or timestamp/row-ID
+  ordering.
 
 Run `PRAGMA foreign_key_check;` after migration and restoration. Any returned
-row is a release blocker.
-
+row is a release blocker. Retention row counts above their policy boundaries
+are also release blockers.

@@ -5,6 +5,7 @@ import { handleCallback } from "../workflows/callback-handler";
 import { extractCommand, handleCommand } from "../workflows/command-handler";
 import type { WorkflowContext } from "../workflows/context";
 import { handleStateMessage } from "../workflows/message-handler";
+import { editOrSendFallback } from "../telegram/active-message";
 
 const unauthorizedMessage = `${BRAND}\n\n⛔ This private bot is restricted to the authorized SoulShop administrator.`;
 const oldUpdateMessage = `${BRAND}\n\n⚠️ An older Telegram update was ignored so it cannot continue or replace the current operation.`;
@@ -25,15 +26,20 @@ export const processTelegramUpdate = async (
       current.state !== null
       && update.updateId <= current.state.operationStartedUpdateId
     ) {
-      await context.telegram.sendMessage(update.callbackQuery.message.chat.id, oldUpdateMessage);
+      const chatId = update.callbackQuery.message?.chat.id ?? update.callbackQuery.from.id;
+      await editOrSendFallback(context.telegram, {
+        chatId,
+        messageId: update.callbackQuery.message?.message_id ?? null
+      }, oldUpdateMessage);
       return;
     }
     await handleCallback(
       context,
       userId,
-      update.callbackQuery.message.chat.id,
+      update.callbackQuery.message?.chat.id ?? update.callbackQuery.from.id,
       update.updateId,
-      update.callbackQuery.data
+      update.callbackQuery.data,
+      update.callbackQuery.message?.message_id ?? null
     );
     return;
   }

@@ -12,6 +12,24 @@ import {
 import { BRAND, historyMessage, leaderboardMenuMessage, selectionMessage } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { WorkflowContext } from "./context";
+import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
+import type { InlineKeyboardMarkup } from "../telegram/types";
+
+const display = async (
+  context: WorkflowContext,
+  chatId: number,
+  text: string,
+  replyMarkup: InlineKeyboardMarkup | undefined,
+  target: ActiveMessageTarget | null
+): Promise<void> => {
+  if (target === null) {
+    await context.telegram.sendMessage(chatId, text, {
+      ...(replyMarkup === undefined ? {} : { replyMarkup })
+    });
+    return;
+  }
+  await editOrSendFallback(context.telegram, target, text, replyMarkup);
+};
 
 export const operationFromCode = (code: string): Operation | null => {
   switch (code) {
@@ -41,29 +59,42 @@ export const startOperation = async (
   adminId: string,
   chatId: number,
   operation: Operation,
-  updateId: number
+  updateId: number,
+  target: ActiveMessageTarget | null = null
 ): Promise<ConversationState> => {
   const state = await context.states.start(adminId, operation, firstStepFor(operation), updateId);
   if (operation === "ADD_CUSTOMER") {
-    await context.telegram.sendMessage(
+    await display(
+      context,
       chatId,
       `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nEnter the customer's WhatsApp number.\nSpaces and hyphens are accepted.`,
-      { replyMarkup: cancelKeyboard() }
+      cancelKeyboard(),
+      target
     );
   } else if (operation === "EXPORT") {
-    await context.telegram.sendMessage(
+    await display(
+      context,
       chatId,
       `${BRAND}\n\n📤 <b>Export Data</b>\n\nSelect the data you want to export:`,
-      { replyMarkup: exportKeyboard(state.payload.token) }
+      exportKeyboard(state.payload.token),
+      target
     );
   } else if (operation === "LEADERBOARD") {
-    await context.telegram.sendMessage(chatId, leaderboardMenuMessage(), {
-      replyMarkup: leaderboardMenuKeyboard(state.payload.token)
-    });
+    await display(
+      context,
+      chatId,
+      leaderboardMenuMessage(),
+      leaderboardMenuKeyboard(state.payload.token),
+      target
+    );
   } else {
-    await context.telegram.sendMessage(chatId, selectionMessage(), {
-      replyMarkup: selectionKeyboard(state.payload.token)
-    });
+    await display(
+      context,
+      chatId,
+      selectionMessage(),
+      selectionKeyboard(state.payload.token),
+      target
+    );
   }
   return state;
 };
@@ -72,7 +103,8 @@ export const promptAfterSelection = async (
   context: WorkflowContext,
   state: ConversationState,
   customer: Customer,
-  chatId: number
+  chatId: number,
+  target: ActiveMessageTarget | null = null
 ): Promise<void> => {
   const base = `✅ Taking entry for ${escapeHtml(customer.whatsappNumber)}`;
   if (state.activeOperation === "PURCHASE") {
@@ -83,9 +115,7 @@ export const promptAfterSelection = async (
       selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
-    await context.telegram.sendMessage(chatId, `${base}\n\nEnter the purchase amount in BDT.`, {
-      replyMarkup: cancelKeyboard()
-    });
+    await display(context, chatId, `${base}\n\nEnter the purchase amount in BDT.`, cancelKeyboard(), target);
     return;
   }
   if (state.activeOperation === "MANUAL_ADD") {
@@ -96,9 +126,13 @@ export const promptAfterSelection = async (
       selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
-    await context.telegram.sendMessage(chatId, `${base}\n\nEnter the number of points you want to add.`, {
-      replyMarkup: cancelKeyboard()
-    });
+    await display(
+      context,
+      chatId,
+      `${base}\n\nEnter the number of points you want to add.`,
+      cancelKeyboard(),
+      target
+    );
     return;
   }
   if (state.activeOperation === "REDEEM") {
@@ -109,17 +143,19 @@ export const promptAfterSelection = async (
       selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
-    await context.telegram.sendMessage(
+    await display(
+      context,
       chatId,
       `${base}\n\nCurrent Points: ${formatPointUnits(customer.pointBalanceUnits)} points\nCurrent Reward Value: ≈ BDT ${customer.roundedRewardBdt}\n\nEnter the number of points you want to redeem.`,
-      { replyMarkup: cancelKeyboard() }
+      cancelKeyboard(),
+      target
     );
     return;
   }
   if (state.activeOperation === "BALANCE") {
     const { balanceMessage } = await import("../telegram/messages");
     await context.states.clear(state.administratorTelegramId);
-    await context.telegram.sendMessage(chatId, balanceMessage(customer));
+    await display(context, chatId, balanceMessage(customer), undefined, target);
     return;
   }
   if (state.activeOperation === "HISTORY") {
@@ -131,7 +167,7 @@ export const promptAfterSelection = async (
       searchPage: 0,
       payload: { token: state.payload.token }
     });
-    await showHistory(context, saved, customer, chatId, 0);
+    await showHistory(context, saved, customer, chatId, 0, target);
   }
 };
 
@@ -139,7 +175,8 @@ export const showSearchResults = async (
   context: WorkflowContext,
   state: ConversationState,
   chatId: number,
-  page: number
+  page: number,
+  target: ActiveMessageTarget | null = null
 ): Promise<void> => {
   if (state.searchDigits === null) throw new Error("Search state is incomplete.");
   const result = await context.customers.searchBySuffix(state.searchDigits, page);
@@ -152,17 +189,21 @@ export const showSearchResults = async (
   });
   if (result.customers.length === 0) {
     const { noResultsKeyboard } = await import("../telegram/keyboards");
-    await context.telegram.sendMessage(
+    await display(
+      context,
       chatId,
       `${BRAND}\n\nNo customer was found ending in ${escapeHtml(state.searchDigits)}.`,
-      { replyMarkup: noResultsKeyboard(saved.payload.token) }
+      noResultsKeyboard(saved.payload.token),
+      target
     );
     return;
   }
-  await context.telegram.sendMessage(
+  await display(
+    context,
     chatId,
     `🔎 <b>Matching Customers</b>\n\nSelect the customer you are looking for:`,
-    { replyMarkup: resultsKeyboard(result.customers, saved.payload.token, page, result.hasNext) }
+    resultsKeyboard(result.customers, saved.payload.token, page, result.hasNext),
+    target
   );
 };
 
@@ -171,13 +212,18 @@ export const showHistory = async (
   state: ConversationState,
   customer: Customer,
   chatId: number,
-  page: number
+  page: number,
+  target: ActiveMessageTarget | null = null
 ): Promise<void> => {
   const result = await context.transactions.listForCustomer(customer.id, page);
   const saved = await context.states.save({ ...state, currentStep: "SHOW_HISTORY", searchPage: page });
-  await context.telegram.sendMessage(chatId, historyMessage(customer, result.transactions, page), {
-    replyMarkup: historyKeyboard(saved.payload.token, page, result.hasNext)
-  });
+  await display(
+    context,
+    chatId,
+    historyMessage(customer, result.transactions, page),
+    historyKeyboard(saved.payload.token, page, result.hasNext),
+    target
+  );
 };
 
 export const purchaseConfirmation = (

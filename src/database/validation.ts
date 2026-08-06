@@ -185,6 +185,10 @@ export const mapCustomer = (value: unknown): Customer => {
     pointBalanceUnits: nonnegativeIntegerField(row, "point_balance_units"),
     roundedRewardBdt: nonnegativeIntegerField(row, "rounded_reward_bdt"),
     creationTelegramUpdateId: nullableNonnegativeIntegerField(row, "creation_telegram_update_id"),
+    latestMutationTelegramUpdateId: nullableNonnegativeIntegerField(
+      row,
+      "latest_mutation_telegram_update_id"
+    ),
     createdAtUtc: isoUtcField(row, "created_at_utc"),
     updatedAtUtc: isoUtcField(row, "updated_at_utc")
   };

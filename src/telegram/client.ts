@@ -16,6 +16,31 @@ export interface SendMessageOptions {
   parseMode?: "HTML";
 }
 
+export interface TelegramBotMessage {
+  messageId: number;
+  chatId: number;
+}
+
+const parseBotMessage = (value: unknown, method: string): TelegramBotMessage => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TelegramApiError("Telegram returned an invalid message.", method);
+  }
+  const row = value as Record<string, unknown>;
+  const chat = typeof row.chat === "object" && row.chat !== null && !Array.isArray(row.chat)
+    ? row.chat as Record<string, unknown>
+    : null;
+  if (
+    typeof row.message_id !== "number"
+    || !Number.isSafeInteger(row.message_id)
+    || chat === null
+    || typeof chat.id !== "number"
+    || !Number.isSafeInteger(chat.id)
+  ) {
+    throw new TelegramApiError("Telegram returned an invalid message.", method);
+  }
+  return { messageId: row.message_id, chatId: chat.id };
+};
+
 export class TelegramClient {
   private readonly fetcher: typeof fetch;
 
@@ -75,42 +100,57 @@ export class TelegramClient {
     return this.call(method, JSON.stringify(value), { "content-type": "application/json" });
   }
 
-  sendMessage(chatId: number, text: string, options: SendMessageOptions = {}): Promise<unknown> {
-    return this.callJson("sendMessage", {
+  async sendMessage(
+    chatId: number,
+    text: string,
+    options: SendMessageOptions = {}
+  ): Promise<TelegramBotMessage> {
+    const result = await this.callJson("sendMessage", {
       chat_id: chatId,
       text,
       parse_mode: options.parseMode ?? "HTML",
       ...(options.replyMarkup === undefined ? {} : { reply_markup: options.replyMarkup })
     });
+    return parseBotMessage(result, "sendMessage");
   }
 
-  editMessageText(
+  async editMessageText(
     chatId: number,
     messageId: number,
     text: string,
     replyMarkup?: InlineKeyboardMarkup
-  ): Promise<unknown> {
-    return this.callJson("editMessageText", {
+  ): Promise<TelegramBotMessage> {
+    const result = await this.callJson("editMessageText", {
       chat_id: chatId,
       message_id: messageId,
       text,
       parse_mode: "HTML",
       ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup })
     });
+    return parseBotMessage(result, "editMessageText");
   }
 
-  answerCallbackQuery(callbackQueryId: string, text?: string): Promise<unknown> {
-    return this.callJson("answerCallbackQuery", {
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<void> {
+    const result = await this.callJson("answerCallbackQuery", {
       callback_query_id: callbackQueryId,
       ...(text === undefined ? {} : { text: text.slice(0, 200) })
     });
+    if (result !== true) {
+      throw new TelegramApiError("Telegram returned an invalid callback answer.", "answerCallbackQuery");
+    }
   }
 
-  sendDocument(chatId: number, filename: string, contents: string, caption: string): Promise<unknown> {
+  async sendDocument(
+    chatId: number,
+    filename: string,
+    contents: string,
+    caption: string
+  ): Promise<TelegramBotMessage> {
     const form = new FormData();
     form.set("chat_id", String(chatId));
     form.set("caption", caption);
     form.set("document", new Blob([contents], { type: "text/csv;charset=utf-8" }), filename);
-    return this.call("sendDocument", form);
+    const result = await this.call("sendDocument", form);
+    return parseBotMessage(result, "sendDocument");
   }
 }

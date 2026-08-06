@@ -13,6 +13,7 @@ describe("registered command routing", () => {
     "history",
     "addcustomer",
     "export",
+    "leaderboard",
     "restart",
     "cancel",
     "help"
@@ -36,6 +37,7 @@ describe("help requirement matrix", () => {
     "/balance",
     "/history",
     "/export",
+    "/leaderboard",
     "/cancel",
     "/restart",
     "BDT 525 = 6.5625 points",
@@ -64,6 +66,7 @@ describe("Telegram callback size and dashboard actions", () => {
     "📜 Customer History",
     "👤 Add New Customer",
     "📤 Export Data",
+    "🏆 Leaderboard",
     "ℹ️ Help"
   ])("shows dashboard action %s", (label) => {
     expect(dashboardKeyboard().inline_keyboard.flat().map((button) => button.text)).toContain(label);

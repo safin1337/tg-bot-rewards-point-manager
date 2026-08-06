@@ -1,22 +1,31 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone } from "../domain/phone";
 import { formatPointUnits } from "../domain/points";
+import { leaderboardPeriods } from "../domain/leaderboard";
 import { newStateToken } from "../database/state-repository";
 import {
   cancelKeyboard,
   customerActionsKeyboard,
   dashboardKeyboard,
   confirmKeyboard,
+  leaderboardMenuKeyboard,
+  leaderboardPeriodsKeyboard,
+  leaderboardResetKeyboard,
+  leaderboardResultKeyboard,
 } from "../telegram/keyboards";
 import {
   BRAND,
   addCustomerSuccessMessage,
   helpMessage,
+  leaderboardMenuMessage,
+  leaderboardMessage,
+  leaderboardResetConfirmationMessage,
+  leaderboardResetSuccessMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage
 } from "../telegram/messages";
-import type { ConversationState } from "../types/models";
+import type { ConversationState, LeaderboardPeriodType } from "../types/models";
 import { escapeHtml } from "../utils/html";
 import {
   operationFromCode,
@@ -215,7 +224,7 @@ export const handleCallback = async (
     return;
   }
 
-  let match = /^begin:([PMRBAHE])$/.exec(data);
+  let match = /^begin:([PMRBAHEL])$/.exec(data);
   if (match?.[1] !== undefined) {
     const operation = operationFromCode(match[1]);
     if (operation === null) return stale(context, chatId);
@@ -223,11 +232,146 @@ export const handleCallback = async (
     return;
   }
 
+  match = /^lb:(w|m):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, chatId, match[2]);
+    if (state === null || state.activeOperation !== "LEADERBOARD" || state.currentStep !== "LEADERBOARD_MENU") {
+      await stale(context, chatId);
+      return;
+    }
+    const type: LeaderboardPeriodType = match[1] === "w" ? "WEEK" : "MONTH";
+    const periods = leaderboardPeriods(type);
+    const saved = await context.states.save({
+      ...state,
+      currentStep: type === "WEEK" ? "LEADERBOARD_WEEKLY" : "LEADERBOARD_MONTHLY",
+      payload: { token: state.payload.token }
+    });
+    await context.telegram.sendMessage(
+      chatId,
+      `${BRAND}\n\nSelect a ${type === "WEEK" ? "weekly" : "monthly"} leaderboard period:`,
+      { replyMarkup: leaderboardPeriodsKeyboard(type, periods, saved.payload.token) }
+    );
+    return;
+  }
+
+  match = /^lbv:(w|m):(\d):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined && match[3] !== undefined) {
+    const state = await stateForToken(context, adminId, chatId, match[3]);
+    const type: LeaderboardPeriodType = match[1] === "w" ? "WEEK" : "MONTH";
+    const expectedStep = type === "WEEK" ? "LEADERBOARD_WEEKLY" : "LEADERBOARD_MONTHLY";
+    const index = Number(match[2]);
+    const periods = leaderboardPeriods(type);
+    const period = periods[index];
+    if (
+      state === null
+      || state.activeOperation !== "LEADERBOARD"
+      || state.currentStep !== expectedStep
+      || !Number.isSafeInteger(index)
+      || period === undefined
+    ) {
+      await stale(context, chatId);
+      return;
+    }
+    const entries = await context.leaderboards.list(period);
+    await context.telegram.sendMessage(chatId, leaderboardMessage(period, entries), {
+      replyMarkup: leaderboardResultKeyboard(state.payload.token)
+    });
+    return;
+  }
+
+  match = /^lb:back:([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined) {
+    const state = await stateForToken(context, adminId, chatId, match[1]);
+    if (
+      state === null
+      || state.activeOperation !== "LEADERBOARD"
+      || state.currentStep === "CONFIRM_LEADERBOARD_RESET"
+    ) {
+      await stale(context, chatId);
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "LEADERBOARD_MENU",
+      payload: { token: state.payload.token }
+    });
+    await context.telegram.sendMessage(chatId, leaderboardMenuMessage(), {
+      replyMarkup: leaderboardMenuKeyboard(saved.payload.token)
+    });
+    return;
+  }
+
+  match = /^lbr:(w|m):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, chatId, match[2]);
+    if (state === null || state.activeOperation !== "LEADERBOARD" || state.currentStep !== "LEADERBOARD_MENU") {
+      await stale(context, chatId);
+      return;
+    }
+    const type: LeaderboardPeriodType = match[1] === "w" ? "WEEK" : "MONTH";
+    const period = leaderboardPeriods(type)[0];
+    if (period === undefined) throw new Error("Current leaderboard period is unavailable.");
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "CONFIRM_LEADERBOARD_RESET",
+      payload: {
+        token: newStateToken(),
+        leaderboardResetType: type,
+        leaderboardResetPeriodKey: period.key
+      }
+    });
+    await context.telegram.sendMessage(
+      chatId,
+      leaderboardResetConfirmationMessage(type, period.label),
+      { replyMarkup: leaderboardResetKeyboard(type, saved.payload.token) }
+    );
+    return;
+  }
+
+  match = /^lbc:(w|m):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, chatId, match[2]);
+    const type: LeaderboardPeriodType = match[1] === "w" ? "WEEK" : "MONTH";
+    if (
+      state === null
+      || state.activeOperation !== "LEADERBOARD"
+      || state.currentStep !== "CONFIRM_LEADERBOARD_RESET"
+      || state.payload.leaderboardResetType !== type
+      || state.payload.leaderboardResetPeriodKey === undefined
+    ) {
+      await stale(context, chatId);
+      return;
+    }
+    const current = leaderboardPeriods(type)[0];
+    if (current === undefined || current.key !== state.payload.leaderboardResetPeriodKey) {
+      await context.states.clear(adminId);
+      await stale(context, chatId);
+      return;
+    }
+    const result = await context.leaderboards.resetCurrent(
+      type,
+      state.payload.leaderboardResetPeriodKey,
+      updateId,
+      adminId
+    );
+    await context.states.clear(adminId);
+    await context.telegram.sendMessage(
+      chatId,
+      leaderboardResetSuccessMessage(type, result.period.label, result.duplicate),
+      { replyMarkup: dashboardKeyboard() }
+    );
+    return;
+  }
+
   match = /^mode:([sf]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const state = await stateForToken(context, adminId, chatId, match[2]);
     if (state === null || !["SELECT_MODE", "SHOW_RESULTS", "AWAIT_FULL_NUMBER"].includes(state.currentStep)) return;
-    if (state.activeOperation === "ADD_CUSTOMER" || state.activeOperation === "EXPORT") {
+    if (
+      state.activeOperation === "ADD_CUSTOMER"
+      || state.activeOperation === "EXPORT"
+      || state.activeOperation === "LEADERBOARD"
+    ) {
       await stale(context, chatId);
       return;
     }
@@ -254,7 +398,12 @@ export const handleCallback = async (
   match = /^again:([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined) {
     const state = await stateForToken(context, adminId, chatId, match[1]);
-    if (state === null || state.activeOperation === "ADD_CUSTOMER" || state.activeOperation === "EXPORT") return;
+    if (
+      state === null
+      || state.activeOperation === "ADD_CUSTOMER"
+      || state.activeOperation === "EXPORT"
+      || state.activeOperation === "LEADERBOARD"
+    ) return;
     await context.states.save({
       ...state,
       currentStep: "AWAIT_SEARCH",

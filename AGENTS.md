@@ -44,9 +44,10 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - `/addcustomer` and newly created purchase/manual-add customers start with exactly zero point units and zero rounded reward BDT.
 - Zero-point customer creation never creates a reward transaction.
-- Preserve the atomic invariant: a customer balance update and its transaction history insertion both succeed or both fail.
+- Preserve the atomic invariant: the update-ID claim, customer balance update, transaction insertion, applicable leaderboard increments, completed mutation receipt, and required retention pruning all succeed or all fail.
 - Use conditional expected-balance updates and a database-level nonnegative condition.
-- Keep transactions append-only in normal bot operations.
+- Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning may remove rows beyond the newest 40 per customer only after permanent mutation receipts preserve idempotency.
+- The newest-40 limit applies across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined. Customer balances and leaderboard aggregates must never depend on retained detailed rows.
 - Preserve idempotency for customer creation, balance confirmations, and exports. Duplicate Telegram updates must not change balances twice.
 - Do not permanently mark a destructive update completed before its required mutation succeeds.
 - Validate D1 rows and conversation `payload_json`; do not trust type assertions over external data.
@@ -70,7 +71,7 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - D1 migrations are versioned under `migrations/` and must remain trackable despite the global `*.sql` ignore.
 - Never rewrite a previously deployed migration. Add a new migration.
-- Preserve existing balances and transaction history during schema changes.
+- Preserve existing customer balances during schema changes. Before approved retention pruning, backfill existing detailed history into permanent mutation receipts and applicable leaderboard aggregates.
 - Keep business logic independent of Telegram transport and SQL inside repositories/migrations.
 - Use strict TypeScript and validated `unknown` for external inputs. Avoid `any`.
 - Do not leave required production paths as placeholders or TODOs.

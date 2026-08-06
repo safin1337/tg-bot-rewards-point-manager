@@ -2,6 +2,7 @@ import type { AppConfig } from "../env";
 import { RewardMutationService } from "../application/mutation-service";
 import { CustomerRepository } from "../database/customer-repository";
 import { IdempotencyRepository } from "../database/idempotency-repository";
+import { LeaderboardRepository } from "../database/leaderboard-repository";
 import { StateRepository } from "../database/state-repository";
 import { TransactionRepository } from "../database/transaction-repository";
 import { ExportService } from "../exports/export-service";
@@ -15,6 +16,7 @@ export interface WorkflowContext {
   transactions: TransactionRepository;
   states: StateRepository;
   idempotency: IdempotencyRepository;
+  leaderboards: LeaderboardRepository;
   mutations: RewardMutationService;
   exports: ExportService;
 }
@@ -31,6 +33,7 @@ export const makeWorkflowContext = (
   transactions: new TransactionRepository(db),
   states: new StateRepository(db, config.stateTtlMinutes),
   idempotency: new IdempotencyRepository(db),
+  leaderboards: new LeaderboardRepository(db),
   mutations: new RewardMutationService(db),
   exports: new ExportService(db, config.exportMaxRows, config.exportMaxBytes)
 });

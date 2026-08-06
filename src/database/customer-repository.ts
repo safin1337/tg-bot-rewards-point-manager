@@ -29,6 +29,30 @@ export class CustomerRepository {
     return row === null ? null : mapCustomer(row);
   }
 
+  balanceUpdateStatement(
+    customerId: number,
+    expectedBalanceUnits: number,
+    pointsDeltaUnits: number,
+    balanceAfterUnits: number,
+    roundedRewardAfterBdt: number,
+    updatedAtUtc: string
+  ): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `UPDATE customers SET
+           point_balance_units = ?, rounded_reward_bdt = ?, updated_at_utc = ?
+         WHERE id = ? AND point_balance_units = ? AND point_balance_units + ? >= 0`
+      )
+      .bind(
+        balanceAfterUnits,
+        roundedRewardAfterBdt,
+        updatedAtUtc,
+        customerId,
+        expectedBalanceUnits,
+        pointsDeltaUnits
+      );
+  }
+
   async createZeroBalance(
     phone: NormalizedPhone,
     telegramUpdateId: number,

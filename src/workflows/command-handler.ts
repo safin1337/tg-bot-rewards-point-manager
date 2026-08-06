@@ -11,7 +11,8 @@ const COMMAND_OPERATIONS: Readonly<Record<string, Operation>> = {
   balance: "BALANCE",
   history: "HISTORY",
   addcustomer: "ADD_CUSTOMER",
-  export: "EXPORT"
+  export: "EXPORT",
+  leaderboard: "LEADERBOARD"
 };
 
 export const extractCommand = (text: string): string | null => {

@@ -1,4 +1,5 @@
-import type { Customer } from "../types/models";
+import type { LeaderboardPeriod } from "../domain/leaderboard";
+import type { Customer, LeaderboardPeriodType } from "../types/models";
 import type { InlineKeyboardMarkup } from "./types";
 
 export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
@@ -16,9 +17,10 @@ export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
       { text: "👤 Add New Customer", callback_data: "begin:A" }
     ],
     [
-      { text: "📤 Export Data", callback_data: "begin:E" },
-      { text: "ℹ️ Help", callback_data: "help" }
-    ]
+      { text: "🏆 Leaderboard", callback_data: "begin:L" },
+      { text: "📤 Export Data", callback_data: "begin:E" }
+    ],
+    [{ text: "ℹ️ Help", callback_data: "help" }]
   ]
 });
 
@@ -142,6 +144,51 @@ export const exportKeyboard = (token: string): InlineKeyboardMarkup => ({
     [{ text: "👥 Customer Balances", callback_data: `export:${token}:c` }],
     [{ text: "📜 Transaction History", callback_data: `export:${token}:t` }],
     [{ text: "📦 Complete Export", callback_data: `export:${token}:a` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const leaderboardMenuKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "📅 Weekly Leaderboard", callback_data: `lb:w:${token}` }],
+    [{ text: "🗓️ Monthly Leaderboard", callback_data: `lb:m:${token}` }],
+    [{ text: "⚠️ Reset Current Week", callback_data: `lbr:w:${token}` }],
+    [{ text: "⚠️ Reset Current Month", callback_data: `lbr:m:${token}` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const leaderboardPeriodsKeyboard = (
+  type: LeaderboardPeriodType,
+  periods: readonly LeaderboardPeriod[],
+  token: string
+): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    ...periods.map((period, index) => [{
+      text: `${period.running ? "▶️" : "✅"} ${period.label}`,
+      callback_data: `lbv:${type === "WEEK" ? "w" : "m"}:${index}:${token}`
+    }]),
+    [{ text: "⬅️ Leaderboard Menu", callback_data: `lb:back:${token}` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const leaderboardResultKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "⬅️ Leaderboard Menu", callback_data: `lb:back:${token}` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const leaderboardResetKeyboard = (
+  type: LeaderboardPeriodType,
+  token: string
+): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{
+      text: "✅ Confirm Reset",
+      callback_data: `lbc:${type === "WEEK" ? "w" : "m"}:${token}`
+    }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });

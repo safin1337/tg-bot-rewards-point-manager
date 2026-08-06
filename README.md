@@ -1,6 +1,6 @@
-# SoulShop Rewards Point System
+# SoulShop Rewards Point System V2.0.0
 
-An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and history, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
+An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and retained history, viewing weekly/monthly leaderboards, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
 
 No AI service, paid database, continuously running server, custom domain, or production long polling is used.
 
@@ -15,8 +15,10 @@ Telegram Bot API
         v  HTTPS POST /webhook + secret header
 Cloudflare Worker (TypeScript)
         |
-        +-- D1 conversation state and idempotency
-        +-- D1 customers and append-only transactions
+        +-- D1 conversation state and permanent mutation receipts
+        +-- D1 authoritative customer balances
+        +-- D1 newest-40 detailed transactions
+        +-- D1 weekly/monthly leaderboard aggregates and reset generations
         |
         v
 Telegram messages and CSV documents
@@ -39,6 +41,8 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 - Rounded reward BDT is `floor((point units + 20,000) / 40,000)`.
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
 - Manual additions and redemptions accept up to four decimal places.
+- Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
+- Permanent mutation receipts, not retained detail rows, prevent old Telegram updates from being processed again.
 
 Example:
 
@@ -46,6 +50,17 @@ Example:
 BDT 525 = 65,625 units = 6.5625 points
 6.5625 points ≈ BDT 2 reward value
 ```
+
+## Leaderboard rules
+
+- Weekly periods run Monday 12:00 AM through Sunday 11:59:59.999 PM in `Asia/Dhaka`.
+- Available weekly views are the running week, the previous completed week, and two weeks ago.
+- Available monthly views are the running month and the previous completed month.
+- `PURCHASE` and `MANUAL_ADD` contribute positive gross earned point units. `REDEEM` never changes leaderboard earnings.
+- Rankings use exact `earned_point_units DESC`, then the earliest qualifying earning timestamp, then `customer_id ASC`.
+- Results show normalized phone numbers, never customer names, and are limited to 10 entries.
+- Display uses deterministic two-decimal rounding, while storage remains exact integer point units with four-decimal point precision.
+- Weekly and monthly resets are independent. A reset starts a new generation/cutoff for only the current period; balances and detailed history do not change.
 
 ## Commands
 
@@ -59,6 +74,7 @@ BDT 525 = 65,625 units = 6.5625 points
 | `/history` | View newest-first reward history |
 | `/addcustomer` | Register a zero-point customer |
 | `/export` | Export customers and/or transactions |
+| `/leaderboard` | View weekly/monthly rankings or reset the current period |
 | `/restart` | Restart the active workflow |
 | `/cancel` | Cancel the active workflow |
 | `/help` | Show bot instructions |
@@ -152,7 +168,17 @@ Apply to the remote D1 database only after reviewing the migration:
 npm run db:migrate:remote
 ```
 
-The migrations create `customers`, `transactions`, `conversation_states`, and `processed_updates`, plus suffix/history indexes, database constraints, resumable export progress, and a workflow update-order boundary that rejects delayed updates from an older operation.
+The migrations create authoritative customers, retained transactions, conversation state, processed exports, permanent mutation receipts, leaderboard periods/aggregates, and reset receipts. They also add suffix/history/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
+
+For V2.0.0, review [the production migration runbook](docs/V2.0.0-MIGRATION.md) before any remote action. The safe order is:
+
+1. Take and protect a full D1 backup.
+2. Apply `0004_mutation_receipts_and_leaderboards.sql`, which creates structures and backfills receipts plus applicable aggregates.
+3. Verify receipt/aggregate consistency.
+4. Apply `0005_verify_backfill_and_prune_history.sql`; its guards abort before pruning if verification fails.
+5. Deploy the matching V2.0.0 Worker only after migration verification.
+
+Never reverse that order. Old detailed rows removed by retention cannot be reconstructed unless an external backup preserves them.
 
 ## 6. Create the Telegram bot
 
@@ -329,9 +355,11 @@ Using only the configured administrator account:
 6. `/balance` shows the latest point and rounded BDT values.
 7. `/history` shows newest-first entries in Asia/Dhaka time.
 8. `/export` sends the selected CSV file(s).
-9. `/restart` drops collected values and restarts the same operation.
-10. `/cancel` clears state and returns to the dashboard.
-11. A different Telegram user cannot search, mutate, or export.
+9. `/leaderboard` shows the five supported period views, phone-only top-10 rankings, and independent reset confirmations.
+10. Reset Current Week leaves monthly totals unchanged; Reset Current Month leaves weekly totals unchanged.
+11. `/restart` drops collected values and restarts the same operation.
+12. `/cancel` clears state and returns to the dashboard.
+13. A different Telegram user cannot search, mutate, export, view leaderboards, or reset them.
 
 ## 14. Logs and diagnostics
 
@@ -368,17 +396,19 @@ npx wrangler d1 execute soulshop-rewards-db `
   --command="SELECT * FROM transactions ORDER BY created_at_utc DESC, id DESC;"
 ```
 
-Customer balances are the source of truth; transactions are append-only audit history.
+Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention removes rows beyond the newest 40 per customer only after permanent receipts preserve replay protection. Leaderboard aggregates are independent of detailed history.
+
+Database table and invariant details are documented in [docs/DATABASE.md](docs/DATABASE.md).
 
 ## 16. Export and backup
 
 ### Method A: Telegram CSV
 
-Use `/export` for readable customer lists, spreadsheet analysis, operational reports, and transaction review. CSV protects phone numbers and other leading formula characters from spreadsheet formula execution. Configured row and byte limits fail with a warning rather than silently truncating.
+Use `/export` for readable customer lists, spreadsheet analysis, operational reports, and retained transaction review. Transaction CSV contains only the newest 40 detailed rows per customer. CSV protects phone numbers and other leading formula characters from spreadsheet formula execution. Configured row and byte limits fail with a warning rather than silently truncating.
 
 ### Method B: full Wrangler D1 SQL export
 
-Use this for schema/data preservation, disaster recovery, and complete restoration:
+Use this for schema/data preservation, disaster recovery, and complete restoration. Take this backup before applying the V2.0.0 pruning migration if older detail may ever be needed:
 
 ```powershell
 New-Item -ItemType Directory -Force "backups" | Out-Null
@@ -396,6 +426,11 @@ npx wrangler d1 export soulshop-rewards-db \
 ```
 
 Backups and CSVs contain private customer phone numbers. They are ignored by Git. Never commit, publicly share, email without protection, or store them in an untrusted location.
+
+After pruning, the live database still preserves authoritative balances,
+permanent mutation receipts, and retained leaderboard aggregates, but it cannot
+reconstruct deleted detailed transactions. Only a pre-pruning external backup
+can preserve that older detail.
 
 To restore, first create and test against a separate recovery database. After verifying the target and backup:
 
@@ -437,6 +472,8 @@ The Worker and Telegram must change together or webhook requests will receive `4
 - **Customer not found by suffix:** search must be exactly four or five digits, without spaces.
 - **Local data disappeared:** local D1 and remote D1 are different stores; use `--local` and `--remote` intentionally.
 - **Export too large:** use the full Wrangler D1 SQL export.
+- **Older history is missing:** V2.0.0 intentionally retains only 40 detailed rows per customer; check a protected pre-pruning backup if older detail is required.
+- **Leaderboard period is empty after reset:** this is expected until a new purchase or manual addition is recorded for that reset generation.
 - **Database conflict:** another balance update won optimistic concurrency; restart to review the latest balance.
 - **Tests cannot write Wrangler logs in a restricted shell:** set `XDG_CONFIG_HOME` to a writable project directory for that process.
 
@@ -462,8 +499,8 @@ This architecture is designed for Cloudflare Workers and D1 free-tier usage and 
 - One administrator ID is checked before any customer query or mutation.
 - The webhook secret header is required.
 - Telegram updates, callback values, D1 rows, state JSON, point inputs, and phones are validated.
-- Customer balance and audit insertion are one atomic D1 batch guarded by an expected balance.
-- Unique Telegram update IDs prevent duplicate balance changes.
+- Balance, detailed transaction, applicable leaderboard totals, permanent receipt, and pruning are one atomic D1 batch guarded by the expected balance.
+- Permanent receipts keyed by unique Telegram update IDs prevent duplicate balance and leaderboard changes even after detailed rows are pruned.
 - Notes and dynamic values are HTML escaped.
 - CSV formula injection is neutralized.
 - No real token or secret belongs in source control.

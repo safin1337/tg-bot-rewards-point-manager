@@ -1,4 +1,4 @@
-import type { RewardTransaction } from "../types/models";
+import type { RewardTransaction, TransactionType } from "../types/models";
 import { mapTransaction } from "./validation";
 
 export interface TransactionPage {
@@ -19,6 +19,62 @@ export class TransactionRepository {
       .bind(updateId)
       .first();
     return row === null ? null : mapTransaction(row);
+  }
+
+  insertStatement(values: {
+    customerId: number;
+    transactionType: TransactionType;
+    purchaseAmountBdt: number | null;
+    pointsDeltaUnits: number;
+    balanceBeforeUnits: number;
+    balanceAfterUnits: number;
+    roundedRewardBeforeBdt: number;
+    roundedRewardAfterBdt: number;
+    transactionRewardRoundedBdt: number;
+    note: string | null;
+    telegramUpdateId: number;
+    createdAtUtc: string;
+  }): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `INSERT INTO transactions (
+           customer_id, transaction_type, purchase_amount_bdt, points_delta_units,
+           balance_before_units, balance_after_units, rounded_reward_before_bdt,
+           rounded_reward_after_bdt, transaction_reward_rounded_bdt, note,
+           telegram_update_id, created_at_utc
+         )
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE changes() = 1`
+      )
+      .bind(
+        values.customerId,
+        values.transactionType,
+        values.purchaseAmountBdt,
+        values.pointsDeltaUnits,
+        values.balanceBeforeUnits,
+        values.balanceAfterUnits,
+        values.roundedRewardBeforeBdt,
+        values.roundedRewardAfterBdt,
+        values.transactionRewardRoundedBdt,
+        values.note,
+        values.telegramUpdateId,
+        values.createdAtUtc
+      );
+  }
+
+  pruneStatement(customerId: number): D1PreparedStatement {
+    return this.db
+      .prepare(
+        `DELETE FROM transactions
+         WHERE customer_id = ?
+           AND id IN (
+             SELECT id FROM transactions
+             WHERE customer_id = ?
+             ORDER BY created_at_utc DESC, id DESC
+             LIMIT -1 OFFSET 40
+           )`
+      )
+      .bind(customerId, customerId);
   }
 
   async listForCustomer(customerId: number, page: number): Promise<TransactionPage> {

@@ -1,4 +1,15 @@
-import type { ConversationState, Customer, Operation, RewardTransaction, StatePayload, TransactionType, WorkflowStep } from "../types/models";
+import type {
+  ConversationState,
+  Customer,
+  LeaderboardEntry,
+  LeaderboardPeriodType,
+  MutationReceipt,
+  Operation,
+  RewardTransaction,
+  StatePayload,
+  TransactionType,
+  WorkflowStep
+} from "../types/models";
 
 type Row = Record<string, unknown>;
 
@@ -73,15 +84,19 @@ const normalizedPhoneField = (row: Row, key: string): string => {
 };
 
 const OPERATIONS: readonly Operation[] = [
-  "PURCHASE", "MANUAL_ADD", "REDEEM", "BALANCE", "HISTORY", "ADD_CUSTOMER", "EXPORT"
+  "PURCHASE", "MANUAL_ADD", "REDEEM", "BALANCE", "HISTORY", "ADD_CUSTOMER", "EXPORT",
+  "LEADERBOARD"
 ];
 const STEPS: readonly WorkflowStep[] = [
   "SELECT_MODE", "AWAIT_SEARCH", "SHOW_RESULTS", "AWAIT_FULL_NUMBER",
   "CONFIRM_CREATE_FOR_OPERATION", "AWAIT_ADD_CUSTOMER_NUMBER", "CONFIRM_ADD_CUSTOMER",
   "AWAIT_PURCHASE_AMOUNT", "CONFIRM_PURCHASE", "AWAIT_POINT_AMOUNT", "AWAIT_NOTE",
-  "CONFIRM_MANUAL_ADD", "CONFIRM_REDEEM", "SHOW_HISTORY", "SELECT_EXPORT"
+  "CONFIRM_MANUAL_ADD", "CONFIRM_REDEEM", "SHOW_HISTORY", "SELECT_EXPORT",
+  "LEADERBOARD_MENU", "LEADERBOARD_WEEKLY", "LEADERBOARD_MONTHLY",
+  "CONFIRM_LEADERBOARD_RESET"
 ];
 const TRANSACTION_TYPES: readonly TransactionType[] = ["PURCHASE", "MANUAL_ADD", "REDEEM"];
+const LEADERBOARD_PERIOD_TYPES: readonly LeaderboardPeriodType[] = ["WEEK", "MONTH"];
 
 const enumField = <T extends string>(row: Row, key: string, values: readonly T[]): T => {
   const value = stringField(row, key);
@@ -124,6 +139,29 @@ const parsePayload = (json: string): StatePayload => {
       throw new Error("Invalid conversation state.");
     }
     payload.pendingPhone = row.pendingPhone;
+  }
+  if (row.leaderboardResetType !== undefined) {
+    if (
+      typeof row.leaderboardResetType !== "string"
+      || !LEADERBOARD_PERIOD_TYPES.includes(row.leaderboardResetType as LeaderboardPeriodType)
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.leaderboardResetType = row.leaderboardResetType as LeaderboardPeriodType;
+  }
+  if (row.leaderboardResetPeriodKey !== undefined) {
+    if (
+      typeof row.leaderboardResetPeriodKey !== "string"
+      || !/^\d{4}-\d{2}(?:-\d{2})?$/.test(row.leaderboardResetPeriodKey)
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.leaderboardResetPeriodKey = row.leaderboardResetPeriodKey;
+  }
+  if (
+    (payload.leaderboardResetType === undefined) !== (payload.leaderboardResetPeriodKey === undefined)
+  ) {
+    throw new Error("Invalid conversation state.");
   }
   return payload;
 };
@@ -184,6 +222,44 @@ export const mapTransaction = (value: unknown): RewardTransaction => {
     note,
     telegramUpdateId: nonnegativeIntegerField(row, "telegram_update_id"),
     createdAtUtc: isoUtcField(row, "created_at_utc")
+  };
+};
+
+export const mapMutationReceipt = (value: unknown): MutationReceipt => {
+  const row = objectRow(value);
+  const mutationType = enumField(row, "mutation_type", TRANSACTION_TYPES);
+  const status = stringField(row, "status");
+  const pointsDeltaUnits = integerField(row, "points_delta_units");
+  const balanceBeforeUnits = nonnegativeIntegerField(row, "balance_before_units");
+  const balanceAfterUnits = nonnegativeIntegerField(row, "balance_after_units");
+  if (
+    status !== "COMPLETED"
+    || (mutationType === "REDEEM" ? pointsDeltaUnits >= 0 : pointsDeltaUnits <= 0)
+    || balanceBeforeUnits + pointsDeltaUnits !== balanceAfterUnits
+  ) {
+    throw new Error("Invalid mutation receipt.");
+  }
+  return {
+    telegramUpdateId: nonnegativeIntegerField(row, "telegram_update_id"),
+    customerId: positiveIntegerField(row, "customer_id"),
+    mutationType,
+    pointsDeltaUnits,
+    balanceBeforeUnits,
+    balanceAfterUnits,
+    roundedRewardBeforeBdt: nonnegativeIntegerField(row, "rounded_reward_before_bdt"),
+    roundedRewardAfterBdt: nonnegativeIntegerField(row, "rounded_reward_after_bdt"),
+    transactionRewardRoundedBdt: nonnegativeIntegerField(row, "transaction_reward_rounded_bdt"),
+    completedAtUtc: isoUtcField(row, "completed_at_utc")
+  };
+};
+
+export const mapLeaderboardEntry = (value: unknown): LeaderboardEntry => {
+  const row = objectRow(value);
+  return {
+    customerId: positiveIntegerField(row, "customer_id"),
+    whatsappNumber: normalizedPhoneField(row, "whatsapp_number"),
+    earnedPointUnits: positiveIntegerField(row, "earned_point_units"),
+    firstQualifyingEarningAtUtc: isoUtcField(row, "first_qualifying_earning_at_utc")
   };
 };
 

@@ -5,10 +5,11 @@ import {
   cancelKeyboard,
   exportKeyboard,
   historyKeyboard,
+  leaderboardMenuKeyboard,
   resultsKeyboard,
   selectionKeyboard
 } from "../telegram/keyboards";
-import { BRAND, historyMessage, selectionMessage } from "../telegram/messages";
+import { BRAND, historyMessage, leaderboardMenuMessage, selectionMessage } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { WorkflowContext } from "./context";
 
@@ -21,6 +22,7 @@ export const operationFromCode = (code: string): Operation | null => {
     case "H": return "HISTORY";
     case "A": return "ADD_CUSTOMER";
     case "E": return "EXPORT";
+    case "L": return "LEADERBOARD";
     default: return null;
   }
 };
@@ -30,6 +32,8 @@ export const firstStepFor = (operation: Operation) =>
     ? "AWAIT_ADD_CUSTOMER_NUMBER" as const
     : operation === "EXPORT"
       ? "SELECT_EXPORT" as const
+      : operation === "LEADERBOARD"
+        ? "LEADERBOARD_MENU" as const
       : "SELECT_MODE" as const;
 
 export const startOperation = async (
@@ -52,6 +56,10 @@ export const startOperation = async (
       `${BRAND}\n\n📤 <b>Export Data</b>\n\nSelect the data you want to export:`,
       { replyMarkup: exportKeyboard(state.payload.token) }
     );
+  } else if (operation === "LEADERBOARD") {
+    await context.telegram.sendMessage(chatId, leaderboardMenuMessage(), {
+      replyMarkup: leaderboardMenuKeyboard(state.payload.token)
+    });
   } else {
     await context.telegram.sendMessage(chatId, selectionMessage(), {
       replyMarkup: selectionKeyboard(state.payload.token)

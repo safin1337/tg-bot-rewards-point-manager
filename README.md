@@ -38,6 +38,7 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 - `BDT 1 spent = 125 point units`.
 - A purchase earns `purchase BDT × 125` point units.
 - `1 point = BDT 0.25` reward value.
+- In easy words, `BDT 80 spent = 1 point` & `1 point = BDT 0.25` rewards value.
 - Rounded reward BDT is `floor((point units + 20,000) / 40,000)`.
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
 - Manual additions and redemptions accept up to four decimal places.

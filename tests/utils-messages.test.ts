@@ -25,6 +25,7 @@ const customer: Customer = {
   pointBalanceUnits: 65_625,
   roundedRewardBdt: 2,
   creationTelegramUpdateId: 1,
+  latestMutationTelegramUpdateId: 100,
   createdAtUtc: "2026-07-29T09:30:00.000Z",
   updatedAtUtc: "2026-07-29T09:30:00.000Z"
 };

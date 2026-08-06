@@ -5,6 +5,7 @@ import {
   type LeaderboardPeriod
 } from "../domain/leaderboard";
 import type { LeaderboardEntry, LeaderboardPeriodType } from "../types/models";
+import { subtractUtcCalendarMonthsClamped } from "../utils/time";
 import { mapLeaderboardEntry } from "./validation";
 
 export interface LeaderboardResetResult {
@@ -89,6 +90,62 @@ export class LeaderboardRepository {
             OR (period_type = 'MONTH' AND period_key NOT IN (?, ?))`
       )
       .bind(...retained.weeks, ...retained.months);
+  }
+
+  resetReceiptRetentionStatement(at: Date): D1PreparedStatement {
+    const cutoffUtc = subtractUtcCalendarMonthsClamped(at, 2).toISOString();
+    return this.db
+      .prepare(
+        `DELETE FROM leaderboard_reset_receipts
+         WHERE telegram_update_id NOT IN (
+           SELECT telegram_update_id
+           FROM leaderboard_reset_receipts
+           WHERE reset_at_utc >= ?
+           ORDER BY reset_at_utc DESC, telegram_update_id DESC
+           LIMIT 40
+         )`
+      )
+      .bind(cutoffUtc);
+  }
+
+  private resetReceiptRetentionGuardStatement(
+    updateId: number,
+    type: LeaderboardPeriodType,
+    periodKey: string,
+    resetAtUtc: string,
+    administratorTelegramId: string,
+    at: Date
+  ): D1PreparedStatement {
+    const cutoffUtc = subtractUtcCalendarMonthsClamped(at, 2).toISOString();
+    return this.db
+      .prepare(
+        `INSERT INTO leaderboard_reset_receipts (
+           telegram_update_id, period_type, period_key, generation, status,
+           reset_at_utc, administrator_telegram_id
+         )
+         SELECT ?, ?, ?, 0, 'PROCESSING', ?, ?
+         WHERE NOT EXISTS (
+           SELECT 1 FROM leaderboard_reset_receipts
+           WHERE telegram_update_id = ? AND status = 'COMPLETED'
+         )
+         OR EXISTS (
+           SELECT 1 FROM leaderboard_reset_receipts WHERE reset_at_utc < ?
+         )
+         OR (SELECT COUNT(*) FROM leaderboard_reset_receipts) > 40`
+      )
+      .bind(
+        updateId,
+        type,
+        periodKey,
+        resetAtUtc,
+        administratorTelegramId,
+        updateId,
+        cutoffUtc
+      );
+  }
+
+  async cleanupResetReceipts(): Promise<void> {
+    await this.resetReceiptRetentionStatement(this.clock()).run();
   }
 
   async list(period: LeaderboardPeriod): Promise<LeaderboardEntry[]> {
@@ -197,6 +254,15 @@ export class LeaderboardRepository {
         )
         .bind(type, period.key, updateId),
       this.retentionStatement(at),
+      this.resetReceiptRetentionStatement(at),
+      this.resetReceiptRetentionGuardStatement(
+        updateId,
+        type,
+        period.key,
+        resetAtUtc,
+        administratorTelegramId,
+        at
+      ),
       this.db
         .prepare(
           `INSERT INTO leaderboard_reset_receipts (

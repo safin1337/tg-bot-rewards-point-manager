@@ -9,6 +9,7 @@ export interface Customer {
   pointBalanceUnits: number;
   roundedRewardBdt: number;
   creationTelegramUpdateId: number | null;
+  latestMutationTelegramUpdateId: number | null;
   createdAtUtc: string;
   updatedAtUtc: string;
 }

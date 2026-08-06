@@ -32,6 +32,7 @@ export class CustomerRepository {
   balanceUpdateStatement(
     customerId: number,
     expectedBalanceUnits: number,
+    telegramUpdateId: number,
     pointsDeltaUnits: number,
     balanceAfterUnits: number,
     roundedRewardAfterBdt: number,
@@ -40,16 +41,25 @@ export class CustomerRepository {
     return this.db
       .prepare(
         `UPDATE customers SET
-           point_balance_units = ?, rounded_reward_bdt = ?, updated_at_utc = ?
-         WHERE id = ? AND point_balance_units = ? AND point_balance_units + ? >= 0`
+           point_balance_units = ?, rounded_reward_bdt = ?, updated_at_utc = ?,
+           latest_mutation_telegram_update_id = ?
+         WHERE id = ?
+           AND point_balance_units = ?
+           AND point_balance_units + ? >= 0
+           AND (
+             latest_mutation_telegram_update_id IS NULL
+             OR latest_mutation_telegram_update_id < ?
+           )`
       )
       .bind(
         balanceAfterUnits,
         roundedRewardAfterBdt,
         updatedAtUtc,
+        telegramUpdateId,
         customerId,
         expectedBalanceUnits,
-        pointsDeltaUnits
+        pointsDeltaUnits,
+        telegramUpdateId
       );
   }
 

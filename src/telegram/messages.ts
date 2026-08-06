@@ -1,5 +1,6 @@
 import { formatPointUnits } from "../domain/points";
-import type { Customer, RewardTransaction } from "../types/models";
+import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
+import type { Customer, LeaderboardEntry, LeaderboardPeriodType, RewardTransaction } from "../types/models";
 import { escapeHtml } from "../utils/html";
 import { formatDhakaDateTime } from "../utils/time";
 
@@ -25,11 +26,59 @@ export const helpMessage = (): string => `${BRAND}
 • /balance — show the latest points and rounded reward value.
 • /history — show newest transactions first.
 • /export — send customer and/or transaction CSV files.
+• /leaderboard — view weekly/monthly gross earned points or reset the current period.
 • /cancel — cancel the active operation.
 • /restart — restart the active operation from its first step.
 
 BDT 525 = 6.5625 points
 6.5625 points ≈ BDT 2 reward value`;
+
+export const leaderboardMenuMessage = (): string => `${BRAND}
+
+🏆 <b>Leaderboard</b>
+
+Choose a weekly or monthly view, or reset the current period.`;
+
+export const leaderboardMessage = (
+  period: LeaderboardPeriod,
+  entries: readonly LeaderboardEntry[]
+): string => {
+  const title = period.type === "WEEK" ? "Weekly" : "Monthly";
+  const lines = entries.length === 0
+    ? ["No qualifying points have been earned in this period."]
+    : entries.map((entry, index) => {
+      const rank = index + 1;
+      const ordinal = rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`;
+      return `${ordinal} ${escapeHtml(entry.whatsappNumber)} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} points`;
+    });
+  return `🏆 <b>SoulShop ${title} Leaderboard</b>
+${escapeHtml(period.label)} — ${period.running ? "Running" : "Completed"}
+
+${lines.join("\n")}`;
+};
+
+export const leaderboardResetConfirmationMessage = (
+  type: LeaderboardPeriodType,
+  periodLabel: string
+): string => `${BRAND}
+
+⚠️ <b>Reset Current ${type === "WEEK" ? "Weekly" : "Monthly"} Leaderboard?</b>
+
+Period: ${escapeHtml(periodLabel)}
+
+All points earned before this reset will be removed from the current ${type === "WEEK" ? "weekly" : "monthly"} ranking.
+Customer balances and transaction history will not be changed.`;
+
+export const leaderboardResetSuccessMessage = (
+  type: LeaderboardPeriodType,
+  periodLabel: string,
+  duplicate: boolean
+): string => `${BRAND}
+
+${duplicate ? "ℹ️ This reset was already processed." : `✅ Current ${type === "WEEK" ? "weekly" : "monthly"} leaderboard reset successfully.`}
+
+Period: ${escapeHtml(periodLabel)}
+Customer balances and transaction history were not changed.`;
 
 export const balanceMessage = (customer: Customer): string => `${BRAND}
 

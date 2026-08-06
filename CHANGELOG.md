@@ -2,6 +2,50 @@
 
 All notable changes to the SoulShop Rewards Point System are documented in this file.
 
+## [2.0.0] - 2026-08-05
+
+### Transaction retention and permanent idempotency
+
+- Retain only the newest 40 detailed transactions per customer across
+  `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined, ordered deterministically by
+  `created_at_utc DESC, id DESC`.
+- Added compact permanent mutation receipts keyed by Telegram update ID so a
+  pruned update can never change a balance or leaderboard twice.
+- Extended the atomic D1 mutation boundary to include the update claim,
+  expected-balance update, detailed transaction, weekly/monthly aggregates,
+  completed receipt, and required per-customer pruning.
+- Kept `customers.point_balance_units` authoritative. Balances and reward
+  values are never recalculated from retained transaction rows.
+
+### Weekly and monthly leaderboards
+
+- Added the administrator-only `/leaderboard` command and dashboard action.
+- Added current, previous, and two-weeks-ago weekly views plus current and
+  previous monthly views using Monday-based Asia/Dhaka periods.
+- Count positive `PURCHASE` and `MANUAL_ADD` point units as gross earnings;
+  `REDEEM` neither adds nor subtracts leaderboard earnings.
+- Rank by exact earned point units, then earliest qualifying earning timestamp,
+  then customer ID. Results display normalized phone numbers only and at most
+  10 customers.
+- Display leaderboard points with deterministic two-decimal rounding while
+  retaining exact integer point units and four-decimal internal precision.
+
+### Independent resets and safe migration
+
+- Added confirmation-protected, idempotent resets for the current week and
+  current month. Each reset starts a new generation without changing customer
+  balances, detailed transactions, or the other period type.
+- Persist reset cutoffs, generations, administrator identity, and Telegram
+  update IDs; rotate state tokens and bind confirmations to the period key so
+  stale callbacks cannot reset a newly started period.
+- Added migration `0004` to create and backfill receipts, applicable aggregates,
+  and reset structures, followed by migration `0005`, which verifies receipts
+  and aggregate consistency before the first approved prune.
+- Detailed Telegram history and transaction CSV exports now contain only
+  retained rows. Pruned detail cannot be reconstructed without an external
+  backup, while balances, idempotency, and leaderboard aggregates remain
+  intact.
+
 ## [1.0.0] - 2026-08-05
 
 Initial release of the administrator-only SoulShop loyalty management bot for

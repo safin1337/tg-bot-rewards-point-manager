@@ -54,7 +54,11 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM processed_updates"),
     env.DB.prepare("DELETE FROM conversation_states"),
+    env.DB.prepare("DELETE FROM leaderboard_reset_receipts"),
+    env.DB.prepare("DELETE FROM leaderboard_aggregates"),
+    env.DB.prepare("DELETE FROM leaderboard_periods"),
     env.DB.prepare("DELETE FROM transactions"),
+    env.DB.prepare("DELETE FROM mutation_receipts"),
     env.DB.prepare("DELETE FROM customers")
   ]);
 });
@@ -339,5 +343,96 @@ describe("remaining end-to-end workflows", () => {
     expect(calls.filter((call) => call.method === "sendDocument")).toHaveLength(2);
     expect(calls.some((call) => String(call.payload?.text).includes("Export sent successfully"))).toBe(true);
     expect((await context.states.get("123456789")).state).toBeNull();
+  });
+});
+
+describe("administrator leaderboard workflow", () => {
+  it("opens /leaderboard and displays weekly phone-only results", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      700,
+      new Date().toISOString()
+    );
+    await new RewardMutationService(env.DB).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 12_500,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 701,
+      expectedBalanceUnits: 0
+    });
+
+    await processTelegramUpdate(context, message(702, 123456789, "/leaderboard"));
+    let state = (await context.states.get("123456789")).state;
+    expect(state?.currentStep).toBe("LEADERBOARD_MENU");
+    await processTelegramUpdate(
+      context,
+      callback(703, 123456789, `lb:w:${state?.payload.token ?? ""}`)
+    );
+    state = (await context.states.get("123456789")).state;
+    expect(state?.currentStep).toBe("LEADERBOARD_WEEKLY");
+    await processTelegramUpdate(
+      context,
+      callback(704, 123456789, `lbv:w:0:${state?.payload.token ?? ""}`)
+    );
+    const result = calls.find((call) => String(call.payload?.text).includes("SoulShop Weekly Leaderboard"));
+    expect(String(result?.payload?.text)).toContain("+8801712345678 — 1.25 points");
+    expect(String(result?.payload?.text)).not.toContain("Customer:");
+  });
+
+  it("requires an authorized, current-token confirmation and makes repeated reset callbacks harmless", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      710,
+      new Date().toISOString()
+    );
+    await new RewardMutationService(env.DB).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 711,
+      expectedBalanceUnits: 0
+    });
+    await processTelegramUpdate(context, message(712, 123456789, "/leaderboard"));
+    const menu = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(713, 123456789, `lbr:w:${menu?.payload.token ?? ""}`)
+    );
+    const confirmation = (await context.states.get("123456789")).state;
+    expect(confirmation?.payload.token).not.toBe(menu?.payload.token);
+
+    await processTelegramUpdate(
+      context,
+      callback(714, 123456789, `lbc:w:${menu?.payload.token ?? ""}`)
+    );
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM leaderboard_reset_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+
+    await processTelegramUpdate(
+      context,
+      callback(715, 999, `lbc:w:${confirmation?.payload.token ?? ""}`)
+    );
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM leaderboard_reset_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+
+    const validData = `lbc:w:${confirmation?.payload.token ?? ""}`;
+    await processTelegramUpdate(context, callback(716, 123456789, validData));
+    expect((await context.states.get("123456789")).state).toBeNull();
+    const generation = await env.DB.prepare(
+      "SELECT current_generation FROM leaderboard_periods WHERE period_type = 'WEEK'"
+    ).first<{ current_generation: number }>();
+    expect(generation?.current_generation).toBe(1);
+
+    await processTelegramUpdate(context, callback(716, 123456789, validData));
+    const generationAfterReplay = await env.DB.prepare(
+      "SELECT current_generation FROM leaderboard_periods WHERE period_type = 'WEEK'"
+    ).first<{ current_generation: number }>();
+    expect(generationAfterReplay?.current_generation).toBe(1);
   });
 });

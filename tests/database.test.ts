@@ -15,7 +15,11 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM processed_updates"),
     env.DB.prepare("DELETE FROM conversation_states"),
+    env.DB.prepare("DELETE FROM leaderboard_reset_receipts"),
+    env.DB.prepare("DELETE FROM leaderboard_aggregates"),
+    env.DB.prepare("DELETE FROM leaderboard_periods"),
     env.DB.prepare("DELETE FROM transactions"),
+    env.DB.prepare("DELETE FROM mutation_receipts"),
     env.DB.prepare("DELETE FROM customers")
   ]);
 });
@@ -27,7 +31,9 @@ describe("clean migration", () => {
     ).all<{ name: string }>();
     const names = rows.results.map((row) => row.name);
     expect(names).toEqual(expect.arrayContaining([
-      "customers", "transactions", "conversation_states", "processed_updates"
+      "customers", "transactions", "conversation_states", "processed_updates",
+      "mutation_receipts", "leaderboard_periods", "leaderboard_aggregates",
+      "leaderboard_reset_receipts"
     ]));
   });
 
@@ -51,6 +57,7 @@ describe("clean migration", () => {
       "idx_customers_phone_last5",
       "idx_transactions_customer_newest",
       "idx_transactions_created_at"
+      , "idx_mutation_receipts_customer", "idx_leaderboard_top10"
     ]));
   });
 

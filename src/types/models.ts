@@ -1,4 +1,5 @@
 export type TransactionType = "PURCHASE" | "MANUAL_ADD" | "REDEEM";
+export type LeaderboardPeriodType = "WEEK" | "MONTH";
 
 export interface Customer {
   id: number;
@@ -28,6 +29,26 @@ export interface RewardTransaction {
   createdAtUtc: string;
 }
 
+export interface MutationReceipt {
+  telegramUpdateId: number;
+  customerId: number;
+  mutationType: TransactionType;
+  pointsDeltaUnits: number;
+  balanceBeforeUnits: number;
+  balanceAfterUnits: number;
+  roundedRewardBeforeBdt: number;
+  roundedRewardAfterBdt: number;
+  transactionRewardRoundedBdt: number;
+  completedAtUtc: string;
+}
+
+export interface LeaderboardEntry {
+  customerId: number;
+  whatsappNumber: string;
+  earnedPointUnits: number;
+  firstQualifyingEarningAtUtc: string;
+}
+
 export type Operation =
   | "PURCHASE"
   | "MANUAL_ADD"
@@ -35,7 +56,8 @@ export type Operation =
   | "BALANCE"
   | "HISTORY"
   | "ADD_CUSTOMER"
-  | "EXPORT";
+  | "EXPORT"
+  | "LEADERBOARD";
 
 export type SelectionMode = "SUFFIX" | "FULL_NUMBER";
 
@@ -54,7 +76,11 @@ export type WorkflowStep =
   | "CONFIRM_MANUAL_ADD"
   | "CONFIRM_REDEEM"
   | "SHOW_HISTORY"
-  | "SELECT_EXPORT";
+  | "SELECT_EXPORT"
+  | "LEADERBOARD_MENU"
+  | "LEADERBOARD_WEEKLY"
+  | "LEADERBOARD_MONTHLY"
+  | "CONFIRM_LEADERBOARD_RESET";
 
 export interface StatePayload {
   token: string;
@@ -63,6 +89,8 @@ export interface StatePayload {
   note?: string;
   expectedBalanceUnits?: number;
   pendingPhone?: string;
+  leaderboardResetType?: LeaderboardPeriodType;
+  leaderboardResetPeriodKey?: string;
 }
 
 export interface ConversationState {

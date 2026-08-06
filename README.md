@@ -1,4 +1,4 @@
-# SoulShop Rewards Point System V2.0.0
+# SoulShop Rewards Point System V2.0.1
 
 An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and retained history, viewing weekly/monthly leaderboards, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
 
@@ -15,7 +15,7 @@ Telegram Bot API
         v  HTTPS POST /webhook + secret header
 Cloudflare Worker (TypeScript)
         |
-        +-- D1 conversation state and permanent mutation receipts
+        +-- D1 conversation state and bounded operational receipts
         +-- D1 authoritative customer balances
         +-- D1 newest-40 detailed transactions
         +-- D1 weekly/monthly leaderboard aggregates and reset generations
@@ -43,7 +43,7 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
 - Manual additions and redemptions accept up to four decimal places.
 - Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
-- Permanent mutation receipts, not retained detail rows, prevent old Telegram updates from being processed again.
+- Completed mutation receipts correspond to retained detail rows; a per-customer update-ID high-water mark rejects delayed updates after their bounded receipts are pruned.
 
 Example:
 
@@ -79,6 +79,12 @@ BDT 525 = 65,625 units = 6.5625 points
 | `/restart` | Restart the active workflow |
 | `/cancel` | Cancel the active workflow |
 | `/help` | Show bot instructions |
+
+Inline-button navigation uses one active bot message where chronological order
+allows it. Confirmation panels become success results after commit, while
+responses following typed input are sent below that input. Telegram edit
+failures use one safe send-message fallback without repeating database work.
+See [the active-message workflow contract](docs/TELEGRAM-WORKFLOWS.md).
 
 ## 1. Required software
 
@@ -169,7 +175,9 @@ Apply to the remote D1 database only after reviewing the migration:
 npm run db:migrate:remote
 ```
 
-The migrations create authoritative customers, retained transactions, conversation state, processed exports, permanent mutation receipts, leaderboard periods/aggregates, and reset receipts. They also add suffix/history/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
+The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
+
+For V2.0.1, review [the bounded-storage migration runbook](docs/V2.0.1-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves balances and aggregates while bounding operational receipts. This repository preparation did not apply it to production or deploy the Worker.
 
 For V2.0.0, review [the production migration runbook](docs/V2.0.0-MIGRATION.md) before any remote action. The safe order is:
 
@@ -397,7 +405,7 @@ npx wrangler d1 execute soulshop-rewards-db `
   --command="SELECT * FROM transactions ORDER BY created_at_utc DESC, id DESC;"
 ```
 
-Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention removes rows beyond the newest 40 per customer only after permanent receipts preserve replay protection. Leaderboard aggregates are independent of detailed history.
+Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention atomically removes rows beyond the newest 40 per customer and their matching completed receipts. The customer mutation update-ID high-water mark preserves delayed-update protection. Leaderboard aggregates are independent of detailed history.
 
 Database table and invariant details are documented in [docs/DATABASE.md](docs/DATABASE.md).
 
@@ -429,7 +437,7 @@ npx wrangler d1 export soulshop-rewards-db \
 Backups and CSVs contain private customer phone numbers. They are ignored by Git. Never commit, publicly share, email without protection, or store them in an untrusted location.
 
 After pruning, the live database still preserves authoritative balances,
-permanent mutation receipts, and retained leaderboard aggregates, but it cannot
+bounded mutation receipts, mutation update-ID high-water marks, and retained leaderboard aggregates, but it cannot
 reconstruct deleted detailed transactions. Only a pre-pruning external backup
 can preserve that older detail.
 
@@ -500,8 +508,9 @@ This architecture is designed for Cloudflare Workers and D1 free-tier usage and 
 - One administrator ID is checked before any customer query or mutation.
 - The webhook secret header is required.
 - Telegram updates, callback values, D1 rows, state JSON, point inputs, and phones are validated.
-- Balance, detailed transaction, applicable leaderboard totals, permanent receipt, and pruning are one atomic D1 batch guarded by the expected balance.
-- Permanent receipts keyed by unique Telegram update IDs prevent duplicate balance and leaderboard changes even after detailed rows are pruned.
+- Balance, detailed transaction, applicable leaderboard totals, completed receipt, paired pruning, and the mutation high-water mark are one atomic D1 batch guarded by the expected balance.
+- Retained receipts reject duplicate Telegram updates; the per-customer high-water mark rejects older updates after receipt pruning.
+- Callback panels are edited in place where chronologically safe; a failed edit falls back to one new message without changing the committed business result.
 - Notes and dynamic values are HTML escaped.
 - CSV formula injection is neutralized.
 - No real token or secret belongs in source control.

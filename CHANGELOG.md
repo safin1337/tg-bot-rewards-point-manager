@@ -2,6 +2,48 @@
 
 All notable changes to the SoulShop Rewards Point System are documented in this file.
 
+## [2.0.1] - 2026-08-07
+
+### Bounded operational storage
+
+- Added migration `0006_bounded_operational_storage.sql`, which backfills a
+  per-customer mutation update-ID high-water mark, removes completed receipts
+  without retained transaction counterparts, adds paired-delete enforcement,
+  creates retention indexes, bounds reset and processed-update receipts, and
+  aborts on foreign-key violations.
+- Completed mutation receipts now correspond exactly to the newest 40 retained
+  transactions per customer. Transaction and receipt pruning remain inside the
+  atomic balance/transaction/leaderboard/receipt mutation batch.
+- Leaderboard reset receipts and eligible non-active processed updates are
+  retained only when both no older than two clamped UTC calendar months and
+  within the latest 40 overall, with Telegram update ID as the stable tie-breaker.
+- Active five-minute processed-update leases and partial export delivery
+  progress remain protected; stale processing work is reclaimable or eligible
+  for cleanup.
+
+### Active Telegram messages
+
+- Added validated typed Telegram responses and a reusable edit-or-send fallback
+  that treats `message is not modified` as successful.
+- Confirmation panels now become their success results after the database work
+  commits. Edit failures fall back to one new result message without repeating
+  customer creation, point mutations, or leaderboard resets.
+- Customer search, history pagination, customer actions, balance transitions,
+  leaderboard navigation, Search Again, and callback cancellations now reuse
+  the callback message. Responses following typed input remain new messages to
+  preserve chronological order.
+- Missing callback messages safely fall back to the administrator chat, and all
+  authorized, unauthorized, stale, invalid, and duplicate callbacks are answered
+  before workflow processing.
+
+### Operations
+
+- Updated database, migration, workflow, and permanent agent documentation for
+  the bounded v2.0.1 policy. Customers remain unbounded, and retained history is
+  never the source of truth for balances or leaderboards.
+- No production D1 migration, Worker deployment, webhook registration, or
+  production-secret operation was performed for this release preparation.
+
 ## [2.0.0] - 2026-08-05
 
 ### Transaction retention and permanent idempotency

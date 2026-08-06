@@ -17,7 +17,7 @@ export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
       { text: "👤 Add New Customer", callback_data: "begin:A" }
     ],
     [
-      { text: "🏆 Leaderboard", callback_data: "begin:L" },
+      { text: "🏅 Leaderboard", callback_data: "begin:L" },
       { text: "📤 Export Data", callback_data: "begin:E" }
     ],
     [{ text: "ℹ️ Help", callback_data: "help" }]

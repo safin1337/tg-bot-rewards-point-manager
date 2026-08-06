@@ -66,7 +66,7 @@ describe("Telegram callback size and dashboard actions", () => {
     "📜 Customer History",
     "👤 Add New Customer",
     "📤 Export Data",
-    "🏆 Leaderboard",
+    "🏅 Leaderboard",
     "ℹ️ Help"
   ])("shows dashboard action %s", (label) => {
     expect(dashboardKeyboard().inline_keyboard.flat().map((button) => button.text)).toContain(label);

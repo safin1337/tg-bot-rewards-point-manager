@@ -35,7 +35,7 @@ BDT 525 = 6.5625 points
 
 export const leaderboardMenuMessage = (): string => `${BRAND}
 
-🏆 <b>Leaderboard</b>
+🏅 <b>Leaderboard</b>
 
 Choose a weekly or monthly view, or reset the current period.`;
 

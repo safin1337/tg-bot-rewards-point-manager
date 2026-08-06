@@ -28,7 +28,6 @@ const safeLogFailure = (update: TelegramUpdate, error: unknown): void => {
   if (error instanceof TelegramApiError) {
     logEntry.telegramMethod = error.method;
     logEntry.telegramStatus = error.status;
-    logEntry.telegramReason = error.message;
   }
   console.error(JSON.stringify(logEntry));
 };
@@ -43,17 +42,18 @@ const trySendFailure = async (
   if (String(userId) !== context.config.adminTelegramId) return;
   const chatId = update.kind === "message"
     ? update.message.chat.id
-    : update.callbackQuery.message.chat.id;
+    : update.callbackQuery.message?.chat.id ?? update.callbackQuery.from.id;
   try {
     await context.telegram.sendMessage(
       chatId,
       `${BRAND}\n\n⚠️ The operation could not be completed. No success should be assumed. Please retry or use /restart.`
     );
   } catch {
-    console.error("Unable to send the sanitized failure message.", {
+    console.error(JSON.stringify({
+      message: "Unable to send the sanitized failure message.",
       updateId: update.updateId,
       updateType: update.kind
-    });
+    }));
   }
 };
 

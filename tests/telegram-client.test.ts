@@ -88,18 +88,21 @@ describe("Telegram API envelope validation", () => {
       if (this instanceof TelegramClient) {
         return Promise.reject(new TypeError("Illegal invocation"));
       }
-      return Promise.resolve(new Response('{"ok":true,"result":true}', {
+      return Promise.resolve(new Response(
+        '{"ok":true,"result":{"message_id":1,"chat":{"id":1}}}',
+        {
         status: 200,
         headers: { "content-type": "application/json" }
-      }));
+        }
+      ));
     } as typeof fetch;
     const client = new TelegramClient("test-token", fetcher);
 
-    await expect(client.sendMessage(1, "test")).resolves.toBe(true);
+    await expect(client.sendMessage(1, "test")).resolves.toEqual({ messageId: 1, chatId: 1 });
   });
 
   it("accepts a valid Telegram envelope", async () => {
     const client = new TelegramClient("test-token", fetchReturning('{"ok":true,"result":true}'));
-    await expect(client.answerCallbackQuery("callback-id")).resolves.toBe(true);
+    await expect(client.answerCallbackQuery("callback-id")).resolves.toBeUndefined();
   });
 });

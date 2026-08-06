@@ -14,6 +14,7 @@ interface ApiCall {
 }
 
 const calls: ApiCall[] = [];
+let nextEditFailure: string | null = null;
 
 const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -26,7 +27,21 @@ const fakeFetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Respo
     }
   }
   calls.push({ method, payload });
-  return Promise.resolve(new Response(JSON.stringify({ ok: true, result: true }), {
+  if (method === "editMessageText" && nextEditFailure !== null) {
+    const description = nextEditFailure;
+    nextEditFailure = null;
+    return Promise.resolve(new Response(JSON.stringify({ ok: false, description }), {
+      status: 400,
+      headers: { "content-type": "application/json" }
+    }));
+  }
+  const result: unknown = method === "answerCallbackQuery"
+    ? true
+    : {
+      message_id: typeof payload?.message_id === "number" ? payload.message_id : calls.length,
+      chat: { id: typeof payload?.chat_id === "number" ? payload.chat_id : 123456789 }
+    };
+  return Promise.resolve(new Response(JSON.stringify({ ok: true, result }), {
     status: 200,
     headers: { "content-type": "application/json" }
   }));
@@ -38,19 +53,31 @@ const message = (updateId: number, userId: number, text: string): TelegramUpdate
   message: { message_id: updateId, from: { id: userId }, chat: { id: userId }, text }
 });
 
-const callback = (updateId: number, userId: number, data: string): TelegramUpdate => ({
+const callback = (
+  updateId: number,
+  userId: number,
+  data: string,
+  messageId = updateId
+): TelegramUpdate => ({
   updateId,
   kind: "callback",
   callbackQuery: {
     id: `callback-${updateId}`,
     from: { id: userId },
     data,
-    message: { message_id: updateId, chat: { id: userId } }
+    message: { message_id: messageId, chat: { id: userId } }
   }
+});
+
+const callbackWithoutMessage = (updateId: number, userId: number, data: string): TelegramUpdate => ({
+  updateId,
+  kind: "callback",
+  callbackQuery: { id: `callback-${updateId}`, from: { id: userId }, data, message: null }
 });
 
 beforeEach(async () => {
   calls.length = 0;
+  nextEditFailure = null;
   await env.DB.batch([
     env.DB.prepare("DELETE FROM processed_updates"),
     env.DB.prepare("DELETE FROM conversation_states"),
@@ -150,6 +177,13 @@ describe("stateful customer search and purchase", () => {
     const purchaseSuccess = String(
       calls.find((call) => String(call.payload?.text).includes("Purchase Successfully Recorded"))?.payload?.text
     );
+    const purchaseDisplay = calls.find((call) =>
+      String(call.payload?.text).includes("Purchase Successfully Recorded")
+    );
+    expect(purchaseDisplay).toMatchObject({
+      method: "editMessageText",
+      payload: { message_id: 19, reply_markup: { inline_keyboard: [] } }
+    });
     expect(purchaseSuccess).toContain("Points Earned: 6.5625 points");
     expect(purchaseSuccess).toContain("balance is 6.5625 points,\nwith a reward value of ≈ BDT 2.");
     expect(purchaseSuccess).toContain(
@@ -244,6 +278,11 @@ describe("remaining end-to-end workflows", () => {
     expect((await context.transactions.listForCustomer(customer?.id ?? 0, 0)).transactions).toHaveLength(0);
     expect((await context.customers.searchBySuffix("5678", 0)).customers.map((row) => row.id))
       .toContain(customer?.id);
+    expect(calls.find((call) => String(call.payload?.text).includes("Customer Successfully Added")))
+      .toMatchObject({
+        method: "editMessageText",
+        payload: { message_id: 32, reply_markup: { inline_keyboard: [] } }
+      });
   });
 
   it("adds fractional points with an escaped optional note", async () => {
@@ -270,6 +309,8 @@ describe("remaining end-to-end workflows", () => {
       note: "<campaign>"
     });
     expect(calls.some((call) => String(call.payload?.text).includes("Reason: &lt;campaign&gt;"))).toBe(true);
+    expect(calls.find((call) => String(call.payload?.text).includes("Points Successfully Added")))
+      .toMatchObject({ method: "editMessageText", payload: { message_id: 39 } });
   });
 
   it("redeems fractional points and never sends Congratulations", async () => {
@@ -298,6 +339,7 @@ describe("remaining end-to-end workflows", () => {
     expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(37_500);
     const success = calls.find((call) => String(call.payload?.text).includes("Successfully Redeemed"));
     expect(String(success?.payload?.text)).not.toContain("Congratulations");
+    expect(success).toMatchObject({ method: "editMessageText", payload: { message_id: 46 } });
   });
 
   it("shows current balance and newest-first history through full-number selection", async () => {
@@ -380,6 +422,16 @@ describe("administrator leaderboard workflow", () => {
     const result = calls.find((call) => String(call.payload?.text).includes("SoulShop Weekly Leaderboard"));
     expect(String(result?.payload?.text)).toContain("+8801712345678 — 1.25 points");
     expect(String(result?.payload?.text)).not.toContain("Customer:");
+    expect(result).toMatchObject({ method: "editMessageText", payload: { message_id: 704 } });
+    await processTelegramUpdate(
+      context,
+      callback(705, 123456789, `lbv:w:0:${state?.payload.token ?? ""}`, 704)
+    );
+    const refreshed = calls.filter((call) =>
+      call.method === "editMessageText"
+      && String(call.payload?.text).includes("SoulShop Weekly Leaderboard")
+    ).at(-1);
+    expect(refreshed).toMatchObject({ method: "editMessageText", payload: { message_id: 704 } });
   });
 
   it("requires an authorized, current-token confirmation and makes repeated reset callbacks harmless", async () => {
@@ -428,11 +480,190 @@ describe("administrator leaderboard workflow", () => {
       "SELECT current_generation FROM leaderboard_periods WHERE period_type = 'WEEK'"
     ).first<{ current_generation: number }>();
     expect(generation?.current_generation).toBe(1);
+    expect(calls.find((call) => String(call.payload?.text).includes("leaderboard reset successfully")))
+      .toMatchObject({ method: "editMessageText", payload: { message_id: 716 } });
 
     await processTelegramUpdate(context, callback(716, 123456789, validData));
     const generationAfterReplay = await env.DB.prepare(
       "SELECT current_generation FROM leaderboard_periods WHERE period_type = 'WEEK'"
     ).first<{ current_generation: number }>();
     expect(generationAfterReplay?.current_generation).toBe(1);
+  });
+});
+
+describe("active Telegram message behavior", () => {
+  it("reuses one message ID for history Next and Previous", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      20_000,
+      new Date().toISOString()
+    );
+    let balance = 0;
+    for (let index = 1; index <= 6; index += 1) {
+      await new RewardMutationService(env.DB).mutate({
+        customerId: created.customer.id,
+        type: "MANUAL_ADD",
+        pointUnits: 100,
+        purchaseAmountBdt: null,
+        note: null,
+        telegramUpdateId: 20_000 + index,
+        expectedBalanceUnits: balance
+      });
+      balance += 100;
+    }
+    await processTelegramUpdate(context, message(20_100, 123456789, "/history"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(20_101, 123456789, `mode:f:${state?.payload.token ?? ""}`, 500)
+    );
+    await processTelegramUpdate(context, message(20_102, 123456789, "01712345678"));
+    state = (await context.states.get("123456789")).state;
+    const token = state?.payload.token ?? "";
+    await processTelegramUpdate(context, callback(20_103, 123456789, `hist:${token}:1`, 600));
+    await processTelegramUpdate(context, callback(20_104, 123456789, `hist:${token}:0`, 600));
+    const pageEdits = calls.filter((call) =>
+      call.method === "editMessageText"
+      && String(call.payload?.text).includes("Customer Reward History")
+    );
+    expect(pageEdits).toHaveLength(2);
+    expect(pageEdits.map((call) => call.payload?.message_id)).toEqual([600, 600]);
+  });
+
+  it("reuses the search result message for pagination and Search Again", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    for (let index = 0; index < 9; index += 1) {
+      await context.customers.createZeroBalance(
+        normalizePhone(`+1415${String(index).padStart(6, "0")}4567`),
+        21_000 + index,
+        new Date().toISOString()
+      );
+    }
+    await processTelegramUpdate(context, message(21_100, 123456789, "/balance"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(21_101, 123456789, `mode:s:${state?.payload.token ?? ""}`, 700)
+    );
+    await processTelegramUpdate(context, message(21_102, 123456789, "4567"));
+    state = (await context.states.get("123456789")).state;
+    const firstToken = state?.payload.token ?? "";
+    await processTelegramUpdate(
+      context,
+      callback(21_103, 123456789, `pg:${firstToken}:1`, 701)
+    );
+    expect(calls.find((call) =>
+      call.method === "editMessageText"
+      && call.payload?.message_id === 701
+      && String(call.payload.text).includes("Matching Customers")
+    )).toBeDefined();
+    await processTelegramUpdate(
+      context,
+      callback(21_104, 123456789, `again:${firstToken}`, 701)
+    );
+    const reset = (await context.states.get("123456789")).state;
+    expect(reset?.payload.token).not.toBe(firstToken);
+    expect(calls.find((call) =>
+      call.method === "editMessageText"
+      && call.payload?.message_id === 701
+      && String(call.payload.text).includes("Enter the last 4 or 5 digits")
+    )).toBeDefined();
+  });
+
+  it("answers first, edits button prompts, then sends after typed input for chronological order", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(22_000, 123456789, "/balance"));
+    const state = (await context.states.get("123456789")).state;
+    calls.length = 0;
+    await processTelegramUpdate(
+      context,
+      callback(22_001, 123456789, `mode:s:${state?.payload.token ?? ""}`, 702)
+    );
+    expect(calls[0]?.method).toBe("answerCallbackQuery");
+    expect(calls[1]).toMatchObject({ method: "editMessageText", payload: { message_id: 702 } });
+    calls.length = 0;
+    await processTelegramUpdate(context, message(22_002, 123456789, "9999"));
+    expect(calls.some((call) => call.method === "sendMessage")).toBe(true);
+    expect(calls.some((call) => call.method === "editMessageText")).toBe(false);
+    const noMatch = (await context.states.get("123456789")).state;
+    calls.length = 0;
+    await processTelegramUpdate(
+      context,
+      callback(22_003, 123456789, `again:${noMatch?.payload.token ?? ""}`, 703)
+    );
+    expect(calls.find((call) => call.method === "editMessageText"))
+      .toMatchObject({ payload: { message_id: 703 } });
+  });
+
+  it("replaces a callback panel with its cancellation result", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(22_100, 123456789, "/redeem"));
+    calls.length = 0;
+    await processTelegramUpdate(context, callback(22_101, 123456789, "cancel", 710));
+    expect((await context.states.get("123456789")).state).toBeNull();
+    expect(calls.find((call) => String(call.payload?.text).includes("operation was cancelled")))
+      .toMatchObject({ method: "editMessageText", payload: { message_id: 710 } });
+  });
+
+  it("treats message-is-not-modified as harmless without sending a replacement", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(23_000, 123456789, "/purchase"));
+    const state = (await context.states.get("123456789")).state;
+    calls.length = 0;
+    nextEditFailure = "Bad Request: message is not modified";
+    await processTelegramUpdate(
+      context,
+      callback(23_001, 123456789, `mode:s:${state?.payload.token ?? ""}`, 703)
+    );
+    expect(calls.map((call) => call.method)).toEqual(["answerCallbackQuery", "editMessageText"]);
+    expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_SEARCH");
+  });
+
+  it("falls back once after a committed mutation edit failure and never repeats the mutation", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      24_000,
+      new Date().toISOString()
+    );
+    await processTelegramUpdate(context, message(24_100, 123456789, "/purchase"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(24_101, 123456789, `mode:f:${state?.payload.token ?? ""}`, 704)
+    );
+    await processTelegramUpdate(context, message(24_102, 123456789, "01712345678"));
+    await processTelegramUpdate(context, message(24_103, 123456789, "80"));
+    state = (await context.states.get("123456789")).state;
+    const confirmationData = `confirm:${state?.payload.token ?? ""}`;
+    calls.length = 0;
+    nextEditFailure = "Bad Request: message to edit not found";
+    await processTelegramUpdate(context, callback(24_104, 123456789, confirmationData, 705));
+    expect(calls.filter((call) => call.method === "editMessageText")).toHaveLength(1);
+    expect(calls.filter((call) =>
+      call.method === "sendMessage"
+      && String(call.payload?.text).includes("Purchase Successfully Recorded")
+    )).toHaveLength(1);
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(10_000);
+    await processTelegramUpdate(context, callback(24_104, 123456789, confirmationData, 705));
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(1);
+  });
+
+  it("uses a safe send fallback when a callback has no accessible message", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(25_000, 123456789, "/balance"));
+    const state = (await context.states.get("123456789")).state;
+    calls.length = 0;
+    await processTelegramUpdate(
+      context,
+      callbackWithoutMessage(25_001, 123456789, `mode:s:${state?.payload.token ?? ""}`)
+    );
+    expect(calls[0]?.method).toBe("answerCallbackQuery");
+    expect(calls[1]).toMatchObject({
+      method: "sendMessage",
+      payload: { chat_id: 123456789 }
+    });
   });
 });

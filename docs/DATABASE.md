@@ -1,4 +1,4 @@
-# SoulShop V2.0.1 database design
+# SoulShop V2.0.2 database design
 
 ## Sources of truth
 
@@ -49,13 +49,21 @@ creation remains append-only, after which the same atomic D1 batch:
 7. prunes obsolete leaderboard periods; and
 8. runs a retention/integrity guard.
 
-The `transactions_delete_completed_receipt` trigger enforces paired deletion.
-Any transaction or receipt pruning failure rolls back the balance, detailed
-row, aggregates, receipt completion, and all pruning. Processing receipts are
-not deleted by normal completed-receipt pruning. Claims are created and
-completed in one atomic D1 batch, so an active claim is uncommitted and cannot
-be observed by cleanup; migration `0006` removes only abandoned committed
-`PROCESSING` rows left by older or manually altered data.
+The adjacent transaction-pruning and completed-receipt-pruning statements
+enforce paired deletion inside the same atomic D1 batch. Any transaction or
+receipt pruning failure rolls back the balance, detailed row, aggregates,
+receipt completion, and all pruning. Processing receipts are not deleted by
+normal completed-receipt pruning. Claims are created and completed in one
+atomic D1 batch, so an active claim is uncommitted and cannot be observed by
+cleanup; migration `0006` removes only abandoned committed `PROCESSING` rows
+left by older or manually altered data.
+
+Migration `0006` intentionally creates no compound SQLite trigger because
+Wrangler remote migrations submit SQL through the D1 query endpoint, where the
+V2.0.1 trigger form failed with `incomplete input`. Direct manual deletion from
+`transactions` is therefore unsupported unless the corresponding completed
+`mutation_receipts` are deleted in the same reviewed D1 batch. Normal bot
+mutations always perform both pruning statements atomically.
 
 `customers.latest_mutation_telegram_update_id` is backfilled during migration
 and advances atomically with each balance mutation. A retained receipt handles

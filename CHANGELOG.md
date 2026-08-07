@@ -2,6 +2,30 @@
 
 All notable changes to the SoulShop Rewards Point System are documented in this file.
 
+## [2.0.2] - 2026-08-07
+
+### Remote D1 migration hotfix
+
+- Corrected the unapplied `0006_bounded_operational_storage.sql` migration by
+  removing its compound `CREATE TRIGGER ... BEGIN ... END` statement. Wrangler
+  submitted the V2.0.1 migration through the remote D1 query endpoint, where
+  that form failed with `incomplete input` and was fully rolled back.
+- Preserved the exact retention target: customers remain unbounded,
+  transactions remain limited to the newest 40 per customer, and completed
+  mutation receipts remain limited to those corresponding retained rows.
+- Kept transaction pruning and completed-receipt pruning as adjacent statements
+  in the same atomic mutation batch. Existing rollback tests cover failures in
+  either pruning operation, and a new regression verifies that pruning leaves
+  no completed receipt without its retained transaction.
+- Documented that direct manual transaction deletion is unsupported unless its
+  corresponding completed receipt is removed in the same reviewed D1 batch.
+- Updated package metadata, the database design, migration runbook, workflow
+  version, release instructions, and permanent repository safeguards for
+  V2.0.2.
+- No corrected production D1 migration, Worker deployment, webhook change,
+  production-secret operation, Git push, or remote tag was performed during
+  this hotfix preparation.
+
 ## [2.0.1] - 2026-08-07
 
 ### Bounded operational storage

@@ -510,18 +510,34 @@ describe("independent current-period leaderboard resets", () => {
 });
 
 describe("V2 migration invariants", () => {
-  it("keeps completed receipt rows corresponding to retained transactions", async () => {
+  it("keeps completed receipts aligned with retained transactions without a schema trigger", async () => {
     const customer = await createCustomer(40, 40);
-    await mutate(new RewardMutationService(env.DB, () => CURRENT_AT), customer, 40_000, 0, 10_000);
-    const receipt = await new MutationReceiptRepository(env.DB).findCompleted(40_000);
-    expect(receipt).toMatchObject({
-      customerId: customer.id,
-      mutationType: "MANUAL_ADD",
-      balanceBeforeUnits: 0,
-      balanceAfterUnits: 10_000
-    });
-    await env.DB.prepare("DELETE FROM transactions WHERE telegram_update_id = 40000").run();
+    const schemaTrigger = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?"
+    ).bind("transactions_delete_completed_receipt").first<{ name: string }>();
+    expect(schemaTrigger).toBeNull();
+
+    const service = new RewardMutationService(env.DB, () => CURRENT_AT);
+    let balance = 0;
+    for (let index = 0; index < 41; index += 1) {
+      await mutate(service, customer, 40_000 + index, balance, 100);
+      balance += 100;
+    }
+
+    const orphaned = await env.DB.prepare(
+      `SELECT receipt.telegram_update_id
+       FROM mutation_receipts AS receipt
+       LEFT JOIN transactions AS transaction_row
+         ON transaction_row.telegram_update_id = receipt.telegram_update_id
+        AND transaction_row.customer_id = receipt.customer_id
+        AND transaction_row.transaction_type = receipt.mutation_type
+       WHERE receipt.status = 'COMPLETED'
+         AND transaction_row.id IS NULL`
+    ).all<{ telegram_update_id: number }>();
+    expect(orphaned.results).toEqual([]);
     expect(await new MutationReceiptRepository(env.DB).findCompleted(40_000)).toBeNull();
+    expect(await transactions().findByUpdateId(40_000)).toBeNull();
+    expect((await customers().findById(customer.id))?.pointBalanceUnits).toBe(balance);
   });
 
   it("passes foreign-key checks with all V2 tables", async () => {

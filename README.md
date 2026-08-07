@@ -1,4 +1,4 @@
-# SoulShop Rewards Point System V2.0.1
+# SoulShop Rewards Point System V2.0.2
 
 An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and retained history, viewing weekly/monthly leaderboards, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
 
@@ -177,7 +177,7 @@ npm run db:migrate:remote
 
 The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
 
-For V2.0.1, review [the bounded-storage migration runbook](docs/V2.0.1-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves balances and aggregates while bounding operational receipts. This repository preparation did not apply it to production or deploy the Worker.
+For V2.0.2, review [the bounded-storage hotfix runbook](docs/V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 
 For V2.0.0, review [the production migration runbook](docs/V2.0.0-MIGRATION.md) before any remote action. The safe order is:
 

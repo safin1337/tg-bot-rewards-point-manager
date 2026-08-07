@@ -47,20 +47,23 @@ describe("clean migration", () => {
     expect(columns.results.map((column) => column.name)).toContain("operation_started_update_id");
   });
 
-  it("adds bounded-retention indexes, the mutation high-water mark, and paired-delete trigger", async () => {
+  it("adds bounded-retention indexes and the mutation high-water mark without a compound trigger", async () => {
     const customerColumns = await env.DB.prepare("PRAGMA table_info(customers)")
       .all<{ name: string }>();
     expect(customerColumns.results.map((column) => column.name))
       .toContain("latest_mutation_telegram_update_id");
-    const objects = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type IN ('index', 'trigger') ORDER BY name"
+    const indexes = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name"
     ).all<{ name: string }>();
-    expect(objects.results.map((row) => row.name)).toEqual(expect.arrayContaining([
+    expect(indexes.results.map((row) => row.name)).toEqual(expect.arrayContaining([
       "idx_mutation_receipts_customer_completed",
       "idx_leaderboard_reset_retention",
-      "idx_processed_updates_retention",
-      "transactions_delete_completed_receipt"
+      "idx_processed_updates_retention"
     ]));
+    const trigger = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = ?"
+    ).bind("transactions_delete_completed_receipt").first<{ name: string }>();
+    expect(trigger).toBeNull();
   });
 
   it("creates suffix, history, and timestamp indexes", async () => {

@@ -32,15 +32,10 @@ WHERE status = 'COMPLETED'
 DELETE FROM mutation_receipts
 WHERE status = 'PROCESSING';
 
-CREATE TRIGGER transactions_delete_completed_receipt
-AFTER DELETE ON transactions
-BEGIN
-  DELETE FROM mutation_receipts
-  WHERE telegram_update_id = OLD.telegram_update_id
-    AND customer_id = OLD.customer_id
-    AND mutation_type = OLD.transaction_type
-    AND status = 'COMPLETED';
-END;
+-- Normal retention deletes old transactions and their corresponding completed
+-- receipts as adjacent statements in the same atomic D1 batch. Keep this
+-- migration free of compound trigger statements so Wrangler can apply it
+-- through the remote D1 migration query endpoint.
 
 CREATE INDEX idx_mutation_receipts_customer_completed
   ON mutation_receipts(

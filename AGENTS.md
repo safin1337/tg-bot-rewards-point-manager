@@ -47,6 +47,7 @@ These rules are mandatory for every future coding agent working in this reposito
 - Preserve the atomic invariant: the update-ID claim, customer balance update, transaction insertion, applicable leaderboard increments, completed mutation receipt, and required retention pruning all succeed or all fail.
 - Use conditional expected-balance updates and a database-level nonnegative condition.
 - Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning atomically removes rows beyond the newest 40 per customer and their corresponding completed mutation receipts.
+- Never manually delete retained transaction rows without deleting their corresponding completed mutation receipts in the same reviewed D1 batch.
 - The newest-40 limit applies across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined. Customer balances and leaderboard aggregates must never depend on retained detailed rows.
 - Completed mutation receipts are bounded to the receipts corresponding to each customer's retained newest 40 transactions. Preserve the per-customer mutation update-ID high-water mark so a pruned delayed update cannot mutate a balance.
 - Retain leaderboard reset receipts only when they are both within the two-calendar-month UTC window and within the latest 40 overall, ordered by timestamp then Telegram update ID descending.
@@ -78,6 +79,7 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - D1 migrations are versioned under `migrations/` and must remain trackable despite the global `*.sql` ignore.
 - Never rewrite a previously deployed migration. Add a new migration.
+- Avoid compound `CREATE TRIGGER ... BEGIN ... END` statements in Wrangler-managed remote D1 migrations unless they have been verified against an isolated remote D1 database; keep required retention enforcement in explicit atomic batch statements.
 - Preserve existing customer balances during schema changes. Before approved retention pruning, backfill existing detailed history into mutation receipts, mutation update-ID high-water marks, and applicable leaderboard aggregates.
 - Keep business logic independent of Telegram transport and SQL inside repositories/migrations.
 - Use strict TypeScript and validated `unknown` for external inputs. Avoid `any`.

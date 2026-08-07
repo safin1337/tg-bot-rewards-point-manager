@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-SoulShop V2.0.1 uses a hybrid message model to reduce clutter without making
+SoulShop V2.0.2 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 ## Editing rules

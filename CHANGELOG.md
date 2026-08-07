@@ -2,6 +2,26 @@
 
 All notable changes to the SoulShop Rewards Point System are documented in this file.
 
+## [2.0.3] - 2026-08-07
+
+### Customer-selection context
+
+- Added a bold, emoji-prefixed active-operation heading to the customer-selection
+  panel for Record Purchase, Add Points Manually, Redeem Points, Check Balance,
+  and Customer History.
+- Preserved the existing Add New Customer workflow and copy without changes.
+- Covered the exact five message layouts and dashboard callback transitions with
+  regression tests. Slash commands and `/restart` share the same start path.
+
+### Release scope
+
+- Added no D1 schema or data migration and changed no reward, customer, search,
+  authorization, idempotency, retention, or Telegram callback rules.
+- Updated package metadata, workflow documentation, acceptance checks, and the
+  release/deployment runbook for V2.0.3.
+- No production deployment, webhook change, Git push, or remote tag was performed
+  during release preparation.
+
 ## [2.0.2] - 2026-08-07
 
 ### Remote D1 migration hotfix

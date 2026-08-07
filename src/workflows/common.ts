@@ -91,7 +91,7 @@ export const startOperation = async (
     await display(
       context,
       chatId,
-      selectionMessage(),
+      selectionMessage(operation),
       selectionKeyboard(state.payload.token),
       target
     );

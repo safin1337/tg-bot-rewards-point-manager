@@ -1,4 +1,4 @@
-# SoulShop Rewards Point System V2.0.2
+# SoulShop Rewards Point System V2.0.3
 
 An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and retained history, viewing weekly/monthly leaderboards, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
 
@@ -177,6 +177,8 @@ npm run db:migrate:remote
 
 The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
 
+V2.0.3 is a Worker-only Telegram presentation update and adds no D1 migration. Existing production databases must still have every migration through `0006_bounded_operational_storage.sql` applied before deploying V2.0.3. Follow [the V2.0.3 release runbook](docs/V2.0.3-RELEASE.md) for the exact validation, migration-status, deployment, verification, tagging, and rollback sequence.
+
 For V2.0.2, review [the bounded-storage hotfix runbook](docs/V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 
 For V2.0.0, review [the production migration runbook](docs/V2.0.0-MIGRATION.md) before any remote action. The safe order is:
@@ -271,13 +273,14 @@ Set `PUBLIC_WORKER_URL` to the temporary HTTPS origin and register it only when 
 ## 9. Validate before deployment
 
 ```powershell
+npm run db:migrate:local
 npm run typecheck
 npm run lint
 npm run test:run
 npm run build
 ```
 
-Or:
+After the local migration succeeds, the remaining four checks can also be run with:
 
 ```powershell
 npm run check
@@ -357,18 +360,19 @@ Remove-Item Env:PUBLIC_WORKER_URL
 Using only the configured administrator account:
 
 1. `/start` displays all dashboard actions.
-2. `/addcustomer` normalizes a Bangladesh or E.164 number and creates zero points.
-3. `/purchase` finds it by four or five final digits and records BDT 525 as 6.5625 points.
-4. `/addpoints` adds a fractional value and safely displays an HTML-like note.
-5. `/redeem` rejects an amount above the balance and accepts a valid fraction.
-6. `/balance` shows the latest point and rounded BDT values.
-7. `/history` shows newest-first entries in Asia/Dhaka time.
-8. `/export` sends the selected CSV file(s).
-9. `/leaderboard` shows the five supported period views, phone-only top-10 rankings, and independent reset confirmations.
-10. Reset Current Week leaves monthly totals unchanged; Reset Current Month leaves weekly totals unchanged.
-11. `/restart` drops collected values and restarts the same operation.
-12. `/cancel` clears state and returns to the dashboard.
-13. A different Telegram user cannot search, mutate, export, view leaderboards, or reset them.
+2. Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
+3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
+4. `/purchase` finds the customer by four or five final digits and records BDT 525 as 6.5625 points.
+5. `/addpoints` adds a fractional value and safely displays an HTML-like note.
+6. `/redeem` rejects an amount above the balance and accepts a valid fraction.
+7. `/balance` shows the latest point and rounded BDT values.
+8. `/history` shows newest-first entries in Asia/Dhaka time.
+9. `/export` sends the selected CSV file(s).
+10. `/leaderboard` shows the five supported period views, phone-only top-10 rankings, and independent reset confirmations.
+11. Reset Current Week leaves monthly totals unchanged; Reset Current Month leaves weekly totals unchanged.
+12. `/restart` drops collected values and restarts the same operation.
+13. `/cancel` clears state and returns to the dashboard.
+14. A different Telegram user cannot search, mutate, export, view leaderboards, or reset them.
 
 ## 14. Logs and diagnostics
 

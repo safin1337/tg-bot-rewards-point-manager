@@ -8,7 +8,8 @@ import {
   historyMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
-  redemptionSuccessMessage
+  redemptionSuccessMessage,
+  selectionMessage
 } from "../src/telegram/messages";
 import {
   historyKeyboard,
@@ -80,6 +81,18 @@ describe("time formatting", () => {
 });
 
 describe("required branded messages", () => {
+  it.each([
+    ["PURCHASE", "🛒 <b>Record Purchase</b>"],
+    ["MANUAL_ADD", "➕ <b>Add Points Manually</b>"],
+    ["REDEEM", "🎁 <b>Redeem Points</b>"],
+    ["BALANCE", "💰 <b>Check Balance</b>"],
+    ["HISTORY", "📜 <b>Customer History</b>"]
+  ] as const)("identifies the %s operation on its customer-selection panel", (operation, heading) => {
+    expect(selectionMessage(operation)).toBe(
+      `🏆 <b>SoulShop Rewards Point System</b>\n\n${heading}\n\nSelect a customer:`
+    );
+  });
+
   it("purchase includes headline, Congratulations, exact line break, and all taglines", () => {
     const message = purchaseSuccessMessage(customer, 525, 65_625);
     expect(message).toContain("Purchase Successfully Recorded");

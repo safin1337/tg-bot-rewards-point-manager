@@ -113,6 +113,31 @@ describe("administrator-only routing", () => {
 });
 
 describe("stateful customer search and purchase", () => {
+  it.each([
+    ["P", "PURCHASE", "🛒 <b>Record Purchase</b>"],
+    ["M", "MANUAL_ADD", "➕ <b>Add Points Manually</b>"],
+    ["R", "REDEEM", "🎁 <b>Redeem Points</b>"],
+    ["B", "BALANCE", "💰 <b>Check Balance</b>"],
+    ["H", "HISTORY", "📜 <b>Customer History</b>"]
+  ] as const)(
+    "shows the active %s operation on the dashboard customer-selection panel",
+    async (code, operation, heading) => {
+      const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+
+      await processTelegramUpdate(context, callback(5, 123456789, `begin:${code}`, 50));
+
+      expect((await context.states.get("123456789")).state).toMatchObject({
+        activeOperation: operation,
+        currentStep: "SELECT_MODE"
+      });
+      const selectionCall = calls.find((call) => call.method === "editMessageText");
+      expect(selectionCall?.payload).toMatchObject({
+        message_id: 50,
+        text: `🏆 <b>SoulShop Rewards Point System</b>\n\n${heading}\n\nSelect a customer:`
+      });
+    }
+  );
+
   it("executes a suffix-selected purchase and prevents old search selection", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     const created = await new CustomerRepository(env.DB).createZeroBalance(

@@ -1,4 +1,4 @@
-# SoulShop V2.0.2 database design
+# SoulShop V2.0.3 database design
 
 ## Sources of truth
 

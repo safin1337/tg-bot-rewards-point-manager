@@ -1,7 +1,16 @@
 # Telegram active-message workflows
 
-SoulShop V2.0.2 uses a hybrid message model to reduce clutter without making
+SoulShop V2.0.3 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
+
+## Customer-selection context
+
+- Record Purchase, Add Points Manually, Redeem Points, Check Balance, and
+  Customer History selection panels show the active operation as a bold,
+  emoji-prefixed heading between the SoulShop heading and `Select a customer:`.
+- The Add New Customer prompt is separate and remains unchanged.
+- Dashboard callbacks, matching slash commands, and `/restart` use the same
+  operation-aware selection panel.
 
 ## Editing rules
 

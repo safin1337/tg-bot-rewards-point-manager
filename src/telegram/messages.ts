@@ -1,6 +1,6 @@
 import { formatPointUnits } from "../domain/points";
 import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
-import type { Customer, LeaderboardEntry, LeaderboardPeriodType, RewardTransaction } from "../types/models";
+import type { Customer, LeaderboardEntry, LeaderboardPeriodType, Operation, RewardTransaction } from "../types/models";
 import { escapeHtml } from "../utils/html";
 import { formatDhakaDateTime } from "../utils/time";
 
@@ -10,7 +10,18 @@ export const TAGLINES = "Buy More to Earn More\nThank you for purchasing from us
 export const dashboardMessage = (): string =>
   `${BRAND}\n\nWelcome to the SoulShop rewards management dashboard.`;
 
-export const selectionMessage = (): string => `${BRAND}\n\nSelect a customer:`;
+type CustomerSelectionOperation = Exclude<Operation, "ADD_CUSTOMER" | "EXPORT" | "LEADERBOARD">;
+
+const CUSTOMER_SELECTION_HEADINGS = {
+  PURCHASE: "🛒 <b>Record Purchase</b>",
+  MANUAL_ADD: "➕ <b>Add Points Manually</b>",
+  REDEEM: "🎁 <b>Redeem Points</b>",
+  BALANCE: "💰 <b>Check Balance</b>",
+  HISTORY: "📜 <b>Customer History</b>"
+} satisfies Readonly<Record<CustomerSelectionOperation, string>>;
+
+export const selectionMessage = (operation: CustomerSelectionOperation): string =>
+  `${BRAND}\n\n${CUSTOMER_SELECTION_HEADINGS[operation]}\n\nSelect a customer:`;
 
 export const helpMessage = (): string => `${BRAND}
 

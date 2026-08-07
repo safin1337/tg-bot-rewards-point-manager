@@ -110,14 +110,16 @@ describe("required branded messages", () => {
     expect(addCustomerSuccessMessage(zero)).toContain("Current Points: 0 points");
   });
 
-  it("history is branded, newest-ready, conditional, escaped, and Dhaka formatted", () => {
+  it("history keeps its heading, omits closing taglines, and formats details safely", () => {
     const message = historyMessage(customer, [transaction], 0);
     expect(message).toContain("Customer Reward History");
     expect(message).toContain("29 Jul 2026, 03:30 PM");
     expect(message).toContain("PURCHASE: +6.5625 points");
     expect(message).toContain("Purchase Amount: BDT 525");
     expect(message).toContain("Note: &lt;private &amp; note&gt;");
-    expect(message).toContain("Best Wishes from SoulShop");
+    expect(message).not.toContain("Buy More to Earn More");
+    expect(message).not.toContain("Thank you for purchasing from us");
+    expect(message).not.toContain("Best Wishes from SoulShop");
   });
 
   it("history omits purchase amount and note when not applicable", () => {

@@ -15,10 +15,13 @@ These rules are mandatory for every future coding agent working in this reposito
 
 ## Required messages
 
-- Preserve the exact SoulShop headings and the three closing lines:
+- Preserve the exact SoulShop headings.
+- Purchase, manual-add, redemption, and balance messages must preserve these
+  exact three closing lines:
   `Buy More to Earn More`
   `Thank you for purchasing from us`
   `Best Wishes from SoulShop`
+- History messages intentionally omit all three closing lines.
 - Purchase and manual-add success must preserve this mandatory line break:
   `Your current reward point balance is {points} points,`
   `with a reward value of ≈ BDT {value}.`

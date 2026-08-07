@@ -197,5 +197,5 @@ Page: ${page + 1}
 
 ${items}
 
-${TAGLINES}`;
+`;
 };

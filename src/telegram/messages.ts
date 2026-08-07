@@ -193,9 +193,9 @@ export const historyMessage = (
 Customer: ${escapeHtml(customer.whatsappNumber)}
 Current Points: ${formatPointUnits(customer.pointBalanceUnits)} points
 Current Reward Value: ≈ BDT ${customer.roundedRewardBdt}
-Page: ${page + 1}
+📄 Page: ${page + 1}/8
 
 ${items}
 
-`;
+📄 Page: ${page + 1}/8`;
 };

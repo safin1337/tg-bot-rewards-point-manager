@@ -1,4 +1,4 @@
-import { formatPointUnits } from "../domain/points";
+import { formatPointUnitsForDisplay } from "../domain/points";
 import { roundRewardBdt, safeBalanceAfter } from "../domain/rewards";
 import type { ConversationState, Customer, Operation } from "../types/models";
 import {
@@ -146,7 +146,7 @@ export const promptAfterSelection = async (
     await display(
       context,
       chatId,
-      `${base}\n\nCurrent Points: ${formatPointUnits(customer.pointBalanceUnits)} points\nCurrent Reward Value: ≈ BDT ${customer.roundedRewardBdt}\n\nEnter the number of points you want to redeem.`,
+      `${base}\n\nCurrent Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points\nCurrent Reward Value: ≈ BDT ${customer.roundedRewardBdt}\n\nEnter the number of points you want to redeem.`,
       cancelKeyboard(),
       target
     );
@@ -238,9 +238,9 @@ export const purchaseConfirmation = (
 
 Customer: ${escapeHtml(customer.whatsappNumber)}
 Purchase Amount: BDT ${amount}
-Points Earned: ${formatPointUnits(units)} points
-Previous Points: ${formatPointUnits(customer.pointBalanceUnits)} points
-New Points: ${formatPointUnits(after)} points
+Points Earned: ${formatPointUnitsForDisplay(units)} points
+Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+New Points: ${formatPointUnitsForDisplay(after)} points
 Previous Reward Value: ≈ BDT ${customer.roundedRewardBdt}
 New Reward Value: ≈ BDT ${roundRewardBdt(after)}`;
 };
@@ -257,9 +257,9 @@ export const pointConfirmation = (
 <b>Confirm ${operation === "REDEEM" ? "Redemption" : "Manual Point Addition"}</b>
 
 Customer: ${escapeHtml(customer.whatsappNumber)}
-Points ${operation === "REDEEM" ? "to Redeem" : "to Add"}: ${formatPointUnits(units)} points${note === null ? "" : `\nReason: ${escapeHtml(note)}`}
-Previous Points: ${formatPointUnits(customer.pointBalanceUnits)} points
-New Points: ${formatPointUnits(after)} points
+Points ${operation === "REDEEM" ? "to Redeem" : "to Add"}: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : `\nReason: ${escapeHtml(note)}`}
+Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+New Points: ${formatPointUnitsForDisplay(after)} points
 Previous Reward Value: ≈ BDT ${customer.roundedRewardBdt}
 New Reward Value: ≈ BDT ${roundRewardBdt(after)}`;
 };

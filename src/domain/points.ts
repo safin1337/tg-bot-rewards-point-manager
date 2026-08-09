@@ -37,6 +37,20 @@ export const formatPointUnits = (units: number): string => {
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 };
 
+export const formatPointUnitsForDisplay = (units: number): string => {
+  const negative = units < 0;
+  const absolute = Math.abs(units);
+  assertSafeNonnegativeInteger(absolute);
+  const unitsPerHundredth = POINT_UNITS_PER_POINT / 100;
+  const completeHundredths = Math.floor(absolute / unitsPerHundredth);
+  const roundedHundredths = completeHundredths
+    + (absolute % unitsPerHundredth >= unitsPerHundredth / 2 ? 1 : 0);
+  const whole = Math.floor(roundedHundredths / 100);
+  const fraction = String(roundedHundredths % 100).padStart(2, "0");
+  const sign = negative && roundedHundredths !== 0 ? "-" : "";
+  return `${sign}${whole}.${fraction}`;
+};
+
 export const parsePurchaseAmount = (input: string): number => {
   if (!/^\d+$/.test(input)) {
     throw new DomainError("INVALID_PURCHASE", "Enter a positive whole-number purchase amount in BDT.");

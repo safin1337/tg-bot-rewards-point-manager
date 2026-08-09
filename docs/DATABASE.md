@@ -7,6 +7,11 @@ of truth for an available point balance, and `rounded_reward_bdt` is
 recalculated from the total with
 `floor((pointUnits + 20,000) / 40,000)` after every mutation.
 
+Two-decimal point formatting is a Telegram presentation rule only. It is
+calculated from integer point units with half-up rounding and is never stored
+back into D1. Parsing, balances, transaction deltas, leaderboard aggregates,
+and CSV exports retain exact point-unit precision.
+
 Detailed `transactions` and operational receipt rows never reconstruct
 balances or leaderboards. `leaderboard_aggregates` is the independent source
 for leaderboard totals.

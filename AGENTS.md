@@ -12,6 +12,8 @@ These rules are mandatory for every future coding agent working in this reposito
   `floor((pointUnits + 20,000) / 40,000)`.
 - Always recalculate rounded total reward BDT from the total point-unit balance. Never sum rounded transaction rewards.
 - Manual point and redemption parsing must start from the original string and allow at most four decimal places.
+- Telegram-visible point amounts must use exactly two decimal places, rounded half-up from integer point units at the third decimal place.
+- Display rounding must never change parsing, storage, calculations, leaderboard ranking, or exact four-decimal CSV output.
 
 ## Required messages
 

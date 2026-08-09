@@ -1,4 +1,5 @@
-import { assertSafeNonnegativeInteger, POINT_UNITS_PER_POINT, SQLITE_MAX_INTEGER } from "./rewards";
+import { formatPointUnitsForDisplay } from "./points";
+import { assertSafeNonnegativeInteger } from "./rewards";
 import type { LeaderboardPeriodType } from "../types/models";
 
 const DHAKA_CALENDAR = new Intl.DateTimeFormat("en-CA", {
@@ -129,10 +130,6 @@ export const retainedLeaderboardKeys = (at = new Date()): {
 
 export const formatLeaderboardPointUnits = (units: number): string => {
   assertSafeNonnegativeInteger(units);
-  if (units > SQLITE_MAX_INTEGER - 50) throw new Error("Leaderboard total is outside the display range.");
-  const hundredths = Math.floor((units + 50) / (POINT_UNITS_PER_POINT / 100));
-  const whole = Math.floor(hundredths / 100);
-  const fraction = String(hundredths % 100).padStart(2, "0");
-  return `${whole}.${fraction}`;
+  return formatPointUnitsForDisplay(units);
 };
 

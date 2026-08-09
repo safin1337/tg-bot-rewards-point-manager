@@ -52,6 +52,11 @@ BDT 525 = 65,625 units = 6.5625 points
 6.5625 points ≈ BDT 2 reward value
 ```
 
+Telegram displays that exact balance as `6.56 points`. All Telegram-visible
+point amounts use exactly two decimal places and standard half-up rounding at
+the third decimal place. The underlying point units, calculations, parsing,
+leaderboard ranking, and CSV exports retain their exact precision.
+
 ## Leaderboard rules
 
 - Weekly periods run Monday 12:00 AM through Sunday 11:59:59.999 PM in `Asia/Dhaka`.
@@ -362,7 +367,7 @@ Using only the configured administrator account:
 1. `/start` displays all dashboard actions.
 2. Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
-4. `/purchase` finds the customer by four or five final digits and records BDT 525 as 6.5625 points.
+4. `/purchase` finds the customer by four or five final digits, records BDT 525 as exactly 6.5625 points, and displays it as 6.56 points.
 5. `/addpoints` adds a fractional value and safely displays an HTML-like note.
 6. `/redeem` rejects an amount above the balance and accepts a valid fraction.
 7. `/balance` shows the latest point and rounded BDT values.

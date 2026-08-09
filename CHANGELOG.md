@@ -13,10 +13,21 @@ All notable changes to the SoulShop Rewards Point System are documented in this 
 - Covered the exact five message layouts and dashboard callback transitions with
   regression tests. Slash commands and `/restart` share the same start path.
 
+### Two-decimal Telegram point display
+
+- All Telegram-visible point amounts now use exactly two decimal places with
+  standard half-up rounding at the third decimal digit. For example, `4.123`
+  displays as `4.12`, while `4.126` displays as `4.13`.
+- Preserved exact integer point units and up-to-four-decimal precision for
+  parsing, storage, reward calculations, leaderboard ranking, and CSV exports.
+- Added rounding-boundary, message, workflow, and export regression coverage.
+
 ### Release scope
 
 - Added no D1 schema or data migration and changed no reward, customer, search,
   authorization, idempotency, retention, or Telegram callback rules.
+- Added no new release version or tag for the two-decimal presentation change;
+  it remains part of the existing V2.0.3 work.
 - Updated package metadata, workflow documentation, acceptance checks, and the
   release/deployment runbook for V2.0.3.
 - No production deployment, webhook change, Git push, or remote tag was performed

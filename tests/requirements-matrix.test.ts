@@ -40,8 +40,9 @@ describe("help requirement matrix", () => {
     "/leaderboard",
     "/cancel",
     "/restart",
-    "BDT 525 = 6.5625 points",
-    "6.5625 points ≈ BDT 2 reward value"
+    "display with two decimals using standard half-up rounding",
+    "BDT 525 = 6.56 displayed points",
+    "Reward value ≈ BDT 2"
   ])("documents %s", (requiredText) => {
     expect(helpMessage()).toContain(requiredText);
   });

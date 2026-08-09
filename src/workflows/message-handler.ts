@@ -1,6 +1,6 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone, validateSearchDigits } from "../domain/phone";
-import { formatPointUnits, parsePointUnits, parsePurchaseAmount } from "../domain/points";
+import { formatPointUnitsForDisplay, parsePointUnits, parsePurchaseAmount } from "../domain/points";
 import { purchaseToPointUnits, safeBalanceAfter } from "../domain/rewards";
 import {
   addCustomerConfirmKeyboard,
@@ -104,7 +104,7 @@ const handleAddCustomerNumber = async (
   });
   await context.telegram.sendMessage(
     chatId,
-    `${BRAND}\n\n<b>Confirm New Customer</b>\n\nCustomer: ${escapeHtml(phone.normalized)}\nStarting Points: 0 points\nStarting Reward Value: ≈ BDT 0`,
+    `${BRAND}\n\n<b>Confirm New Customer</b>\n\nCustomer: ${escapeHtml(phone.normalized)}\nStarting Points: 0.00 points\nStarting Reward Value: ≈ BDT 0`,
     { replyMarkup: addCustomerConfirmKeyboard(saved.payload.token) }
   );
 };
@@ -201,7 +201,7 @@ export const handleStateMessage = async (
         if (!(error instanceof DomainError)) throw error;
         await context.telegram.sendMessage(
           chatId,
-          `${BRAND}\n\n⚠️ Insufficient point balance.\n\nAvailable: ${formatPointUnits(customer.pointBalanceUnits)} points`,
+          `${BRAND}\n\n⚠️ Insufficient point balance.\n\nAvailable: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points`,
           { replyMarkup: cancelKeyboard() }
         );
         return;

@@ -12,6 +12,17 @@ typed conversations appear out of order.
 - Dashboard callbacks, matching slash commands, and `/restart` use the same
   operation-aware selection panel.
 
+## Point display
+
+- Every Telegram-visible point amount uses exactly two decimal places.
+- Rounding is standard half-up at the third decimal digit: values below five
+  leave the second digit unchanged, while five or above increases it by one.
+- Formatting is derived directly from integer point units. It does not change
+  input precision, stored balances, reward calculations, leaderboard ranking,
+  or exact CSV export values.
+- The rule applies to prompts, confirmations, success and balance messages,
+  insufficient-balance notices, customer details, history, and leaderboards.
+
 ## Editing rules
 
 - A new slash command sends a new active panel.

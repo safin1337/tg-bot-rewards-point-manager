@@ -97,11 +97,13 @@ describe("required branded messages", () => {
     const message = purchaseSuccessMessage(customer, 525, 65_625);
     expect(message).toContain("Purchase Successfully Recorded");
     expect(message).toContain("Congratulations");
-    expect(message).toContain("balance is 6.5625 points,\nwith a reward value of ≈ BDT 2.");
+    expect(message).toContain("Points Earned: 6.56 points");
+    expect(message).toContain("balance is 6.56 points,\nwith a reward value of ≈ BDT 2.");
     expect(message).toContain("Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop");
   });
 
   it("manual addition omits an absent Reason line and escapes a present note", () => {
+    expect(manualAddSuccessMessage(customer, 10_000, null)).toContain("Points Added: 1.00 points");
     expect(manualAddSuccessMessage(customer, 10_000, null)).not.toContain("Reason:");
     expect(manualAddSuccessMessage(customer, 10_000, "<reason>")).toContain("Reason: &lt;reason&gt;");
   });
@@ -109,25 +111,28 @@ describe("required branded messages", () => {
   it("redemption has both required line breaks and never congratulates", () => {
     const message = redemptionSuccessMessage(customer, 10_000, 0);
     expect(message).not.toContain("Congratulations");
-    expect(message).toContain("redeemed 1 points,\nwith a reward value");
-    expect(message).toContain("balance is 6.5625 points,\nwith a remaining reward value");
+    expect(message).toContain("redeemed 1.00 points,\nwith a reward value");
+    expect(message).toContain("balance is 6.56 points,\nwith a remaining reward value");
     expect(message).toContain("Best Wishes from SoulShop");
   });
 
   it("balance preserves the mandatory balance/reward line break", () => {
-    expect(balanceMessage(customer)).toContain("balance is 6.5625 points,\nwith a reward value");
+    expect(balanceMessage(customer)).toContain("balance is 6.56 points,\nwith a reward value");
   });
 
   it("zero-point customer success contains no reward transaction claim", () => {
     const zero = { ...customer, pointBalanceUnits: 0, roundedRewardBdt: 0 };
-    expect(addCustomerSuccessMessage(zero)).toContain("Current Points: 0 points");
+    expect(addCustomerSuccessMessage(zero)).toContain("Current Points: 0.00 points");
   });
 
   it("history keeps its heading, omits closing taglines, and formats details safely", () => {
     const message = historyMessage(customer, [transaction], 0);
     expect(message).toContain("Customer Reward History");
     expect(message).toContain("29 Jul 2026, 03:30 PM");
-    expect(message).toContain("PURCHASE: +6.5625 points");
+    expect(message).toContain("Current Points: 6.56 points");
+    expect(message).toContain("PURCHASE: +6.56 points");
+    expect(message).toContain("Balance Before: 0.00 points");
+    expect(message).toContain("Balance After: 6.56 points");
     expect(message).toContain("Purchase Amount: BDT 525");
     expect(message).toContain("Note: &lt;private &amp; note&gt;");
     expect(message).not.toContain("Buy More to Earn More");

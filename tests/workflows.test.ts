@@ -209,8 +209,8 @@ describe("stateful customer search and purchase", () => {
       method: "editMessageText",
       payload: { message_id: 19, reply_markup: { inline_keyboard: [] } }
     });
-    expect(purchaseSuccess).toContain("Points Earned: 6.5625 points");
-    expect(purchaseSuccess).toContain("balance is 6.5625 points,\nwith a reward value of ≈ BDT 2.");
+    expect(purchaseSuccess).toContain("Points Earned: 6.56 points");
+    expect(purchaseSuccess).toContain("balance is 6.56 points,\nwith a reward value of ≈ BDT 2.");
     expect(purchaseSuccess).toContain(
       "Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop"
     );

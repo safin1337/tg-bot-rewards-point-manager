@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "../src/domain/errors";
 import { cleanPhoneInput, normalizePhone, validateSearchDigits } from "../src/domain/phone";
-import { formatPointUnits, parsePointUnits, parsePurchaseAmount } from "../src/domain/points";
+import {
+  formatPointUnits,
+  formatPointUnitsForDisplay,
+  parsePointUnits,
+  parsePurchaseAmount
+} from "../src/domain/points";
 import {
   purchaseToPointUnits,
   roundRewardBdt,
@@ -78,6 +83,24 @@ describe("point parsing and formatting", () => {
     const formatted = formatPointUnits(units);
     expect(formatted).toBe(expected);
     expect(formatted).not.toMatch(/e/i);
+  });
+
+  it.each([
+    [41_200, "4.12"],
+    [41_230, "4.12"],
+    [41_249, "4.12"],
+    [41_250, "4.13"],
+    [41_260, "4.13"],
+    [45_000, "4.50"],
+    [10_000, "1.00"],
+    [49, "0.00"],
+    [50, "0.01"],
+    [-49, "0.00"],
+    [-41_250, "-4.13"],
+    [2_883_625, "288.36"],
+    [SQLITE_MAX_INTEGER, "900719925474.10"]
+  ])("formats %i point units for two-decimal display", (units, expected) => {
+    expect(formatPointUnitsForDisplay(units)).toBe(expected);
   });
 
   it.each([["525", 525], ["0001", 1]])("parses whole BDT %s", (input, expected) => {

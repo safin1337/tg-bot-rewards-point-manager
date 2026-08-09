@@ -12,7 +12,7 @@ These rules are mandatory for every future coding agent working in this reposito
   `floor((pointUnits + 20,000) / 40,000)`.
 - Always recalculate rounded total reward BDT from the total point-unit balance. Never sum rounded transaction rewards.
 - Manual point and redemption parsing must start from the original string and allow at most four decimal places.
-- Telegram-visible point amounts must use exactly two decimal places, rounded half-up from integer point units at the third decimal place.
+- Telegram-visible point amounts must use exactly two decimal places, rounded half-up from integer point units at the third decimal place, with comma-grouped thousands.
 - Display rounding must never change parsing, storage, calculations, leaderboard ranking, or exact four-decimal CSV output.
 
 ## Required messages
@@ -24,10 +24,17 @@ These rules are mandatory for every future coding agent working in this reposito
   `Thank you for purchasing from us`
   `Best Wishes from SoulShop`
 - History messages intentionally omit all three closing lines.
-- Purchase and manual-add success must preserve this mandatory line break:
-  `Your current reward point balance is {points} points,`
-  `with a reward value of ≈ BDT {value}.`
-- Redemption must preserve both comma/newline pairs for redeemed and remaining values.
+- Purchase and manual-add success must preserve these exact adjacent lines:
+  `Your updated reward balance: {points} points`
+  `Estimated reward value: BDT {value}`
+- Balance messages must preserve these exact adjacent lines:
+  `Your current reward balance: {points} points`
+  `Estimated reward value: BDT {value}`
+- Redemption must preserve these two pairs, separated by one blank line:
+  `Reward amount redeemed: {points} points`
+  `Equivalent reward value: BDT {value}`
+  `Your remaining reward balance: {points} points`
+  `Estimated remaining value: BDT {value}`
 - Never use the word `Congratulations` in redemption success messages.
 - Purchase success, manual-add success, and balance messages retain `Congratulations`.
 - Escape every dynamic Telegram HTML value, particularly notes.

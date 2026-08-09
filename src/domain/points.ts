@@ -46,9 +46,10 @@ export const formatPointUnitsForDisplay = (units: number): string => {
   const roundedHundredths = completeHundredths
     + (absolute % unitsPerHundredth >= unitsPerHundredth / 2 ? 1 : 0);
   const whole = Math.floor(roundedHundredths / 100);
+  const groupedWhole = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const fraction = String(roundedHundredths % 100).padStart(2, "0");
   const sign = negative && roundedHundredths !== 0 ? "-" : "";
-  return `${sign}${whole}.${fraction}`;
+  return `${sign}${groupedWhole}.${fraction}`;
 };
 
 export const parsePurchaseAmount = (input: string): number => {

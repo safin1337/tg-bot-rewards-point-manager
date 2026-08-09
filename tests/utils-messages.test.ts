@@ -31,6 +31,12 @@ const customer: Customer = {
   updatedAtUtc: "2026-07-29T09:30:00.000Z"
 };
 
+const customerWithLargeBalance: Customer = {
+  ...customer,
+  pointBalanceUnits: 13_567_000,
+  roundedRewardBdt: 339
+};
+
 const transaction: RewardTransaction = {
   id: 1,
   customerId: 1,
@@ -93,31 +99,42 @@ describe("required branded messages", () => {
     );
   });
 
-  it("purchase includes headline, Congratulations, exact line break, and all taglines", () => {
-    const message = purchaseSuccessMessage(customer, 525, 65_625);
+  it("purchase includes headline, Congratulations, updated balance labels, and all taglines", () => {
+    const message = purchaseSuccessMessage(customerWithLargeBalance, 525, 65_625);
     expect(message).toContain("Purchase Successfully Recorded");
     expect(message).toContain("Congratulations");
     expect(message).toContain("Points Earned: 6.56 points");
-    expect(message).toContain("balance is 6.56 points,\nwith a reward value of ≈ BDT 2.");
+    expect(message).toContain(
+      "Your updated reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+    );
     expect(message).toContain("Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop");
   });
 
   it("manual addition omits an absent Reason line and escapes a present note", () => {
-    expect(manualAddSuccessMessage(customer, 10_000, null)).toContain("Points Added: 1.00 points");
-    expect(manualAddSuccessMessage(customer, 10_000, null)).not.toContain("Reason:");
-    expect(manualAddSuccessMessage(customer, 10_000, "<reason>")).toContain("Reason: &lt;reason&gt;");
+    const message = manualAddSuccessMessage(customerWithLargeBalance, 10_000, null);
+    expect(message).toContain("Points Added: 1.00 points");
+    expect(message).toContain(
+      "Your updated reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+    );
+    expect(message).not.toContain("Reason:");
+    expect(manualAddSuccessMessage(customerWithLargeBalance, 10_000, "<reason>"))
+      .toContain("Reason: &lt;reason&gt;");
   });
 
-  it("redemption has both required line breaks and never congratulates", () => {
-    const message = redemptionSuccessMessage(customer, 10_000, 0);
+  it("redemption uses the exact redeemed and remaining labels and never congratulates", () => {
+    const message = redemptionSuccessMessage(customerWithLargeBalance, 250_000, 6);
     expect(message).not.toContain("Congratulations");
-    expect(message).toContain("redeemed 1.00 points,\nwith a reward value");
-    expect(message).toContain("balance is 6.56 points,\nwith a remaining reward value");
+    expect(message).toContain(
+      "Reward amount redeemed: 25.00 points\nEquivalent reward value: BDT 6\n\n"
+      + "Your remaining reward balance: 1,356.70 points\nEstimated remaining value: BDT 339"
+    );
     expect(message).toContain("Best Wishes from SoulShop");
   });
 
-  it("balance preserves the mandatory balance/reward line break", () => {
-    expect(balanceMessage(customer)).toContain("balance is 6.56 points,\nwith a reward value");
+  it("balance uses the exact current balance labels", () => {
+    expect(balanceMessage(customerWithLargeBalance)).toContain(
+      "Your current reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+    );
   });
 
   it("zero-point customer success contains no reward transaction claim", () => {

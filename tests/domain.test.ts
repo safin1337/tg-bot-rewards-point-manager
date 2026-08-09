@@ -98,7 +98,8 @@ describe("point parsing and formatting", () => {
     [-49, "0.00"],
     [-41_250, "-4.13"],
     [2_883_625, "288.36"],
-    [SQLITE_MAX_INTEGER, "900719925474.10"]
+    [13_567_000, "1,356.70"],
+    [SQLITE_MAX_INTEGER, "900,719,925,474.10"]
   ])("formats %i point units for two-decimal display", (units, expected) => {
     expect(formatPointUnitsForDisplay(units)).toBe(expected);
   });

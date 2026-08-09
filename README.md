@@ -54,8 +54,14 @@ BDT 525 = 65,625 units = 6.5625 points
 
 Telegram displays that exact balance as `6.56 points`. All Telegram-visible
 point amounts use exactly two decimal places and standard half-up rounding at
-the third decimal place. The underlying point units, calculations, parsing,
-leaderboard ranking, and CSV exports retain their exact precision.
+the third decimal place, with comma-grouped thousands such as `1,356.70`. The
+underlying point units, calculations, parsing, leaderboard ranking, and CSV
+exports retain their exact precision.
+
+Purchase and manual-add results label the post-transaction total as the
+`updated reward balance`; balance checks use `current reward balance`.
+Redemption results separately label the redeemed amount/value and the remaining
+balance/value. These customer-facing labels do not change reward calculations.
 
 ## Leaderboard rules
 
@@ -368,9 +374,9 @@ Using only the configured administrator account:
 2. Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
 4. `/purchase` finds the customer by four or five final digits, records BDT 525 as exactly 6.5625 points, and displays it as 6.56 points.
-5. `/addpoints` adds a fractional value and safely displays an HTML-like note.
-6. `/redeem` rejects an amount above the balance and accepts a valid fraction.
-7. `/balance` shows the latest point and rounded BDT values.
+5. `/addpoints` adds a fractional value, safely displays an HTML-like note, and labels the resulting total as the updated reward balance.
+6. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values.
+7. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
 8. `/history` shows newest-first entries in Asia/Dhaka time.
 9. `/export` sends the selected CSV file(s).
 10. `/leaderboard` shows the five supported period views, phone-only top-10 rankings, and independent reset confirmations.

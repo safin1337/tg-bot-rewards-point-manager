@@ -15,6 +15,7 @@ typed conversations appear out of order.
 ## Point display
 
 - Every Telegram-visible point amount uses exactly two decimal places.
+- Whole-number groups use commas, for example `1,356.70 points`.
 - Rounding is standard half-up at the third decimal digit: values below five
   leave the second digit unchanged, while five or above increases it by one.
 - Formatting is derived directly from integer point units. It does not change
@@ -22,6 +23,18 @@ typed conversations appear out of order.
   or exact CSV export values.
 - The rule applies to prompts, confirmations, success and balance messages,
   insufficient-balance notices, customer details, history, and leaderboards.
+
+## Success and balance labels
+
+- Purchase and manual-add results use `Your updated reward balance` followed by
+  `Estimated reward value`.
+- Balance checks use `Your current reward balance` followed by
+  `Estimated reward value`.
+- Redemption results use `Reward amount redeemed` and `Equivalent reward value`,
+  then one blank line before `Your remaining reward balance` and
+  `Estimated remaining value`.
+- These are exact message contracts. The existing headings, Congratulations
+  rules, closing lines, and reward calculations remain unchanged.
 
 ## Editing rules
 

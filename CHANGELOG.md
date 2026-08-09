@@ -22,6 +22,15 @@ All notable changes to the SoulShop Rewards Point System are documented in this 
   parsing, storage, reward calculations, leaderboard ranking, and CSV exports.
 - Added rounding-boundary, message, workflow, and export regression coverage.
 
+### Clear reward balance copy
+
+- Replaced sentence-style reward summaries with concise label-value lines for
+  purchase, manual-add, redemption, and balance results.
+- Distinguished updated, current, redeemed, and remaining values while
+  retaining the existing headings, Congratulations rules, and closing lines.
+- Added comma grouping to Telegram point totals for easier reading without
+  changing integer point units, reward rounding, or CSV precision.
+
 ### Release scope
 
 - Added no D1 schema or data migration and changed no reward, customer, search,

@@ -100,8 +100,8 @@ Customer: ${escapeHtml(customer.whatsappNumber)}
 
 🎉 Congratulations!
 
-Your current reward point balance is ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points,
-with a reward value of ≈ BDT ${customer.roundedRewardBdt}.
+Your current reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated reward value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
 
@@ -115,8 +115,8 @@ Points Earned: ${formatPointUnitsForDisplay(earned)} points
 
 🎉 Congratulations!
 
-Your current reward point balance is ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points,
-with a reward value of ≈ BDT ${customer.roundedRewardBdt}.
+Your updated reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated reward value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
 
@@ -129,8 +129,8 @@ Points Added: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : 
 
 🎉 Congratulations!
 
-Your current reward point balance is ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points,
-with a reward value of ≈ BDT ${customer.roundedRewardBdt}.
+Your updated reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated reward value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
 
@@ -144,11 +144,11 @@ export const redemptionSuccessMessage = (
 
 Customer: ${escapeHtml(customer.whatsappNumber)}
 
-You have redeemed ${formatPointUnitsForDisplay(redeemedUnits)} points,
-with a reward value of ≈ BDT ${redeemedRewardBdt}.
+Reward amount redeemed: ${formatPointUnitsForDisplay(redeemedUnits)} points
+Equivalent reward value: BDT ${redeemedRewardBdt}
 
-Your remaining reward point balance is ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points,
-with a remaining reward value of ≈ BDT ${customer.roundedRewardBdt}.
+Your remaining reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated remaining value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
 

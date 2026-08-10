@@ -38,6 +38,9 @@ rewards: {
   }
 }
 ```
+For a new installation, follow the complete
+[Fresh Installation Guide](docs/Fresh-Installation.md). It is the authoritative
+setup runbook
 
 Runtime headings, escaped taglines, purchase calculations, help text, and the
 CSV filename prefix derive from these settings. Configure the redemption rate

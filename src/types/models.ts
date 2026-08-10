@@ -87,6 +87,7 @@ export interface StatePayload {
   token: string;
   purchaseAmountBdt?: number;
   pointUnits?: number;
+  earningPolicyId?: string;
   note?: string;
   expectedBalanceUnits?: number;
   pendingPhone?: string;

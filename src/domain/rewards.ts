@@ -1,8 +1,10 @@
+import { APP_RUNTIME_CONFIG } from "../config/app-config";
 import { DomainError } from "./errors";
 
 export const POINT_UNITS_PER_POINT = 10_000;
-export const POINT_UNITS_PER_BDT = 125;
-export const POINT_UNITS_PER_REWARD_BDT = 40_000;
+export const POINT_UNITS_PER_BDT = APP_RUNTIME_CONFIG.rewards.earning.pointUnitsPerBdt;
+export const POINT_UNITS_PER_REWARD_BDT = APP_RUNTIME_CONFIG.rewards.redemption.pointUnitsPerRewardBdt;
+export const EARNING_POLICY_ID = APP_RUNTIME_CONFIG.rewards.earning.policyId;
 export const SQLITE_MAX_INTEGER = 9_007_199_254_740_991;
 
 export const assertSafeNonnegativeInteger = (value: number): void => {
@@ -25,10 +27,9 @@ export const purchaseToPointUnits = (purchaseAmountBdt: number): number => {
 
 export const roundRewardBdt = (pointUnits: number): number => {
   assertSafeNonnegativeInteger(pointUnits);
-  if (pointUnits > SQLITE_MAX_INTEGER - POINT_UNITS_PER_REWARD_BDT / 2) {
-    throw new DomainError("UNSAFE_INTEGER", "The point balance is too large.");
-  }
-  return Math.floor((pointUnits + POINT_UNITS_PER_REWARD_BDT / 2) / POINT_UNITS_PER_REWARD_BDT);
+  const units = BigInt(pointUnits);
+  const unitsPerRewardBdt = BigInt(POINT_UNITS_PER_REWARD_BDT);
+  return Number((units * 2n + unitsPerRewardBdt) / (unitsPerRewardBdt * 2n));
 };
 
 export const safeBalanceAfter = (balance: number, delta: number): number => {

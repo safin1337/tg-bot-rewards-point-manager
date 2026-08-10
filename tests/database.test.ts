@@ -152,8 +152,8 @@ describe("atomic reward mutations and idempotency", () => {
     const input = {
       customerId: created.customer.id,
       type: "PURCHASE" as const,
-      pointUnits: purchaseToPointUnits(525),
-      purchaseAmountBdt: 525,
+      pointUnits: purchaseToPointUnits(500),
+      purchaseAmountBdt: 500,
       note: null,
       telegramUpdateId: 500,
       expectedBalanceUnits: 0
@@ -162,9 +162,9 @@ describe("atomic reward mutations and idempotency", () => {
     const replay = await service.mutate(input);
     expect(first).toMatchObject({
       balanceBeforeUnits: 0,
-      balanceAfterUnits: 65_625,
+      balanceAfterUnits: 100_000,
       roundedRewardBeforeBdt: 0,
-      roundedRewardAfterBdt: 2,
+      roundedRewardAfterBdt: 3,
       duplicate: false
     });
     expect(replay.duplicate).toBe(true);
@@ -172,8 +172,8 @@ describe("atomic reward mutations and idempotency", () => {
     expect(page.transactions).toHaveLength(1);
     expect(page.transactions[0]).toMatchObject({
       transactionType: "PURCHASE",
-      purchaseAmountBdt: 525,
-      pointsDeltaUnits: 65_625
+      purchaseAmountBdt: 500,
+      pointsDeltaUnits: 100_000
     });
   });
 

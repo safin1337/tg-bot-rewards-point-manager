@@ -1,13 +1,19 @@
 # Telegram active-message workflows
 
-SoulShop V2.0.3 uses a hybrid message model to reduce clutter without making
+V2.0.4 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
+
+The brand name, main heading, closing taglines, leaderboard headings, help
+policy text, and CSV prefix derive from `src/config/app-config.ts`. Configurable
+values are HTML-escaped before Telegram insertion. With the default settings,
+the generated heading remains `SoulShop Rewards Point System`.
 
 ## Customer-selection context
 
 - Record Purchase, Add Points Manually, Redeem Points, Check Balance, and
   Customer History selection panels show the active operation as a bold,
-  emoji-prefixed heading between the SoulShop heading and `Select a customer:`.
+  emoji-prefixed heading between the configured application heading and
+  `Select a customer:`.
 - The Add New Customer prompt is separate and remains unchanged.
 - Dashboard callbacks, matching slash commands, and `/restart` use the same
   operation-aware selection panel.
@@ -70,3 +76,16 @@ Every callback is answered before workflow database work, including
 unauthorized, stale, duplicate, malformed, expired, and missing-message
 callbacks. Authorization, operation-start update IDs, and rotated state tokens
 are checked before any customer query or mutation.
+
+## Earning-policy deployment boundary
+
+Every prepared purchase confirmation stores the earning-policy identifier used
+to calculate its displayed point amount. When a new Worker changes that policy,
+an older pending confirmation has a missing or different identifier. Its
+callback is still acknowledged promptly, but the workflow is cleared and the
+confirmation is replaced with a policy-changed warning plus dashboard actions.
+
+This check occurs before mutation service execution. It changes no customer
+balance, transaction, leaderboard aggregate, or completed mutation receipt.
+The administrator must restart the purchase so the next confirmation displays
+and commits the same point amount under the current policy.

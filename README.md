@@ -1,8 +1,54 @@
-# SoulShop Rewards Point System V2.0.3
+# Telegram Bot: Loyalty Rewards Point Manager
 
-An administrator-only Telegram bot for registering SoulShop customers, earning fractional loyalty points, redeeming points, checking balances and retained history, viewing weekly/monthly leaderboards, and exporting operational CSV data. It runs as a Cloudflare Worker, receives Telegram HTTPS webhooks, and stores all durable data in Cloudflare D1.
+A production-ready Telegram bot for managing customer loyalty and reward points
+for a business. It allows an authorized administrator to register customers,
+record purchases, manually add points, redeem points, check balances, review
+transaction history, view leaderboards, and export operational data.
 
-No AI service, paid database, continuously running server, custom domain, or production long polling is used.
+The application is deployed as a Cloudflare Worker and uses Cloudflare D1, a
+managed serverless SQL database built on SQLite. It requires no continuously
+running server and is designed for secure, low-maintenance operation.
+
+This project was originally developed for **SoulShop — Bangladesh's E-Shop**,
+an online store offering digital solutions for everyday needs. The public
+version retains SoulShop as its default configuration while allowing other
+businesses to customize the branding, headings, taglines, and reward policy.
+
+No AI service, paid database, custom domain, or production long polling is
+required.
+
+## Customize it for another business
+
+All non-secret runtime branding and reward-policy settings live in
+[`src/config/app-config.ts`](src/config/app-config.ts). The complete safety and
+infrastructure checklist is in [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md).
+
+For example, a fork can use:
+
+```ts
+brand: {
+  name: "Example Store",
+  heading: "Customer Loyalty Program"
+}
+
+rewards: {
+  earning: {
+    spendBdt: 100,
+    earnPoints: 1
+  }
+}
+```
+
+Runtime headings, escaped taglines, purchase calculations, help text, and the
+CSV filename prefix derive from these settings. Configure the redemption rate
+before production data exists; changing it later is migration-sensitive and
+must not be treated as a casual presentation change.
+
+`APP_CONFIG` does not rename the Cloudflare Worker, D1 database, Telegram bot
+username, GitHub repository, npm package, public Worker URL, or Cloudflare
+account configuration. Those infrastructure identifiers are intentionally
+separate; follow the checklist in `docs/CUSTOMIZATION.md` if they also need to
+change.
 
 ## Architecture
 
@@ -35,11 +81,14 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 ## Loyalty rules
 
 - `1 point = 10,000 point units`.
-- `BDT 1 spent = 125 point units`.
-- A purchase earns `purchase BDT × 125` point units.
+- The default earning policy is `BDT 50 spent = 1 point`.
+- `BDT 1 spent = 200 point units` under the default policy.
+- A purchase earns `purchase BDT × 200` point units under the default policy.
 - `1 point = BDT 0.25` reward value.
-- In easy words, `BDT 80 spent = 1 point` & `1 point = BDT 0.25` rewards value.
+- The redemption policy remains `4 points = BDT 1`.
 - Rounded reward BDT is `floor((point units + 20,000) / 40,000)`.
+- Branding and both reward ratios are validated from `APP_CONFIG`; configured
+  ratios must produce an exact supported integer point-unit conversion.
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
 - Manual additions and redemptions accept up to four decimal places.
 - Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
@@ -48,15 +97,22 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 Example:
 
 ```text
-BDT 525 = 65,625 units = 6.5625 points
-6.5625 points ≈ BDT 2 reward value
+BDT 500 = 100,000 units = 10 points
+10 points ≈ BDT 3 displayed reward value
 ```
 
-Telegram displays that exact balance as `6.56 points`. All Telegram-visible
+Telegram displays that exact balance as `10.00 points`. All Telegram-visible
 point amounts use exactly two decimal places and standard half-up rounding at
 the third decimal place, with comma-grouped thousands such as `1,356.70`. The
 underlying point units, calculations, parsing, leaderboard ranking, and CSV
 exports retain their exact precision.
+
+Existing balances, transactions, mutation receipts, history, and leaderboard
+totals remain exactly as stored when the earning rate changes. The new rate
+applies only to purchases confirmed after the new Worker is deployed. A
+leaderboard week or month spanning deployment can therefore contain purchases
+calculated under both earning policies. Confirmations prepared under an older
+policy are rejected without mutation and must be restarted.
 
 Purchase and manual-add results label the post-transaction total as the
 `updated reward balance`; balance checks use `current reward balance`.
@@ -188,7 +244,12 @@ npm run db:migrate:remote
 
 The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
 
-V2.0.3 is a Worker-only Telegram presentation update and adds no D1 migration. Existing production databases must still have every migration through `0006_bounded_operational_storage.sql` applied before deploying V2.0.3. Follow [the V2.0.3 release runbook](docs/V2.0.3-RELEASE.md) for the exact validation, migration-status, deployment, verification, tagging, and rollback sequence.
+V2.0.4 is a Worker-only configuration and public-documentation release and adds
+no D1 migration. Existing production databases must still have every migration
+through `0006_bounded_operational_storage.sql` applied before deploying V2.0.4.
+Follow [the V2.0.4 release runbook](docs/V2.0.4-RELEASE.md) for validation,
+deployment, verification, tagging, and rollback. The older
+[V2.0.3 runbook](docs/V2.0.3-RELEASE.md) remains as release history.
 
 For V2.0.2, review [the bounded-storage hotfix runbook](docs/V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 
@@ -373,7 +434,7 @@ Using only the configured administrator account:
 1. `/start` displays all dashboard actions.
 2. Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
-4. `/purchase` finds the customer by four or five final digits, records BDT 525 as exactly 6.5625 points, and displays it as 6.56 points.
+4. `/purchase` finds the customer by four or five final digits, records BDT 50 as exactly 1 point and BDT 500 as exactly 10 points, and displays them as 1.00 and 10.00 points.
 5. `/addpoints` adds a fractional value, safely displays an HTML-like note, and labels the resulting total as the updated reward balance.
 6. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values.
 7. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
@@ -529,3 +590,11 @@ This architecture is designed for Cloudflare Workers and D1 free-tier usage and 
 - Notes and dynamic values are HTML escaped.
 - CSV formula injection is neutralized.
 - No real token or secret belongs in source control.
+
+Report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## License status
+
+This repository does not currently include a `LICENSE` file. The owner should
+select and add an appropriate open-source license before announcing the project
+as publicly reusable. No license has been chosen automatically by this release.

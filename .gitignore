@@ -8,7 +8,7 @@ node_modules/
 dist/
 coverage/
 backups/
-exports/
+/exports/
 *.csv
 *.sql
 !migrations/**/*.sql

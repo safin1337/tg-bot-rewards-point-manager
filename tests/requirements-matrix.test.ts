@@ -29,7 +29,7 @@ describe("help requirement matrix", () => {
     "final 4 or 5",
     "complete number",
     "Spaces and supported hyphens",
-    "every BDT 80 earns 1 point",
+    "every BDT 50 earns 1 point",
     "fractional points",
     "/addpoints",
     "/redeem",
@@ -41,8 +41,9 @@ describe("help requirement matrix", () => {
     "/cancel",
     "/restart",
     "display with two decimals using standard half-up rounding",
-    "BDT 525 = 6.56 displayed points",
-    "Reward value ≈ BDT 2"
+    "Stored point units retain exact precision: 1 point = 10,000 point units",
+    "4 points equal BDT 1 reward value",
+    "1 point equals BDT 0.25"
   ])("documents %s", (requiredText) => {
     expect(helpMessage()).toContain(requiredText);
   });

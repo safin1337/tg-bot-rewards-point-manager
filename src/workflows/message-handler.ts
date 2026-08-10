@@ -1,7 +1,7 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone, validateSearchDigits } from "../domain/phone";
 import { formatPointUnitsForDisplay, parsePointUnits, parsePurchaseAmount } from "../domain/points";
-import { purchaseToPointUnits, safeBalanceAfter } from "../domain/rewards";
+import { EARNING_POLICY_ID, purchaseToPointUnits, safeBalanceAfter } from "../domain/rewards";
 import {
   addCustomerConfirmKeyboard,
   cancelKeyboard,
@@ -171,6 +171,7 @@ export const handleStateMessage = async (
         token: state.payload.token,
         purchaseAmountBdt: amount,
         pointUnits: units,
+        earningPolicyId: EARNING_POLICY_ID,
         expectedBalanceUnits: customer.pointBalanceUnits
       }
     });

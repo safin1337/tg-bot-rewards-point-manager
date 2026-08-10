@@ -1,0 +1,170 @@
+# Customization guide
+
+The public project keeps SoulShop as its default business configuration. Safe,
+non-secret runtime customization is centralized in
+`src/config/app-config.ts`. Change that file before deploying a fork; do not
+scatter replacement strings or arithmetic constants through the codebase.
+
+## Brand name and application heading
+
+`brand.name` is the business name. `brand.heading` is the independently
+editable application title placed after it:
+
+```ts
+brand: {
+  name: "Example Store",
+  heading: "Customer Loyalty Program",
+  // ...
+}
+```
+
+This generates `Example Store Customer Loyalty Program`. The default generates
+`SoulShop Rewards Point System`.
+
+Telegram HTML is not accepted as configuration markup. Branding is escaped at
+the insertion boundary, so a name such as `Example & Sons <Store>` is displayed
+as text instead of being interpreted as HTML.
+
+## Closing taglines and `{brand}`
+
+`brand.taglines` is an ordered array. Edit, add, remove, or reorder its entries
+independently:
+
+```ts
+taglines: [
+  "Earn with every purchase",
+  "Thank you for shopping with us",
+  "Best Wishes from {brand}"
+]
+```
+
+Every `{brand}` occurrence is replaced with the configured brand name. With
+`name: "Example Store"`, the last example becomes `Best Wishes from Example
+Store`. All generated tagline text is escaped before Telegram HTML insertion.
+History intentionally omits the closing taglines; purchase, manual-add,
+redemption, and balance messages include them.
+
+## Purchase earning policy
+
+Configure the whole-number ratio under `rewards.earning`:
+
+```ts
+earning: {
+  spendBdt: 50,
+  earnPoints: 1
+}
+```
+
+The application keeps `1 point = 10,000 point units`. Therefore the default is
+derived with integer arithmetic:
+
+```text
+1 point × 10,000 units ÷ BDT 50 = 200 point units per BDT
+```
+
+BDT 1 earns 200 units, BDT 50 earns 10,000 units (1 point), and BDT 500 earns
+100,000 units (10 points). Runtime calculations and `/help` text derive from
+the same settings. A configuration is rejected during import/tests if its ratio
+cannot produce an exact, positive, supported whole-number point-unit conversion
+per BDT. JavaScript binary floating point is never the business source of
+truth.
+
+An earning-rate change affects only purchases confirmed after the new Worker is
+deployed. It does not recalculate or rewrite existing customer balances,
+transactions, mutation receipts, reward snapshots, history, or leaderboard
+aggregates, so no D1 migration is needed. A pending confirmation calculated by
+an older Worker is rejected without mutation and must be restarted so its
+displayed and committed point amounts always match.
+
+If the rate changes during an active leaderboard week or month, that period can
+legitimately contain purchases calculated under both policies. Document the
+deployment time for operational interpretation.
+
+## Redemption policy is migration-sensitive
+
+The default remains:
+
+```ts
+redemption: {
+  points: 4,
+  valueBdt: 1
+}
+```
+
+That means 4 points equal BDT 1, 1 point equals BDT 0.25, and one reward BDT is
+40,000 point units. Configure this before production customer data exists.
+
+Changing the redemption rate after production use changes how current balances
+are valued while historical rows still contain reward snapshots calculated
+under the earlier policy. A reviewed D1 migration/backfill and rollout plan is
+required to make those records consistent. Resetting D1 is acceptable only for
+a disposable local/test installation. Never reset a production database
+without an approved backup, migration plan, and explicit authorization.
+
+## CSV filename prefix
+
+The configured brand is converted to a lowercase, hyphenated ASCII prefix:
+
+- `SoulShop` becomes `soulshop`.
+- `Example Store` becomes `example-store`.
+- A name with no usable ASCII filename characters uses `loyalty-rewards`.
+
+CSV content, exact four-decimal point values, privacy protections, and row/byte
+limits are unchanged.
+
+## Infrastructure rebranding checklist
+
+`APP_CONFIG` intentionally does not change infrastructure. Review these items
+separately, preferably before first production deployment:
+
+1. Cloudflare Worker `name` in `wrangler.jsonc`.
+2. D1 `database_name`, database ID, and the matching npm scripts.
+3. Telegram bot display name and username in BotFather.
+4. GitHub repository name and remotes.
+5. npm package name in `package.json` and `package-lock.json`.
+6. Public `workers.dev` or custom Worker URL.
+7. Cloudflare account/environment configuration and CI variables.
+8. Operational backup filenames and organization-specific documentation.
+
+Do not rename existing production infrastructure merely to change Telegram
+branding. Plan and verify each infrastructure rename independently.
+
+## Secrets, customer data, and Git
+
+Never put `BOT_TOKEN`, `WEBHOOK_SECRET`, `ADMIN_TELEGRAM_ID`, Cloudflare
+credentials, real phone numbers, customer notes, exports, backups, or sensitive
+logs in `APP_CONFIG`, source, tests, documentation, or commits. Keep local
+secrets in ignored `.dev.vars`/environment variables and production secrets in
+Cloudflare's secret storage. Confirm ignores before sharing a fork:
+
+```powershell
+git check-ignore -v .dev.vars
+git check-ignore -v .env
+git status --short
+```
+
+## Validate a customization locally
+
+From PowerShell in the repository root:
+
+```powershell
+npm ci
+npm run db:migrate:local
+npm run check
+git diff --check
+git status --short
+```
+
+`npm run check` runs strict TypeScript, ESLint, the full Vitest suite, and a
+Wrangler dry-run build. It does not deploy.
+
+For branding-specific verification, temporarily customize `APP_CONFIG`, run
+the checks, start the local Worker with `npm run dev`, and inspect `/start` and
+`/help` only with safe local credentials. Confirm the heading, each tagline,
+HTML-like characters, help rates, and CSV prefix. Restore or commit the intended
+configuration deliberately; never use production secrets for a public test.
+
+Before production, also test representative purchases (including exactly one
+configured earning unit), balance, redemption, history, export, leaderboard,
+authorization, and a deliberately stale purchase confirmation in an isolated
+environment.

@@ -1,7 +1,7 @@
 import { botToken, telegramCall } from "./telegram-api.mjs";
 
 const commands = [
-  { command: "start", description: "Open the SoulShop rewards dashboard" },
+  { command: "start", description: "Open the rewards dashboard" },
   { command: "purchase", description: "Record a customer purchase" },
   { command: "addpoints", description: "Add customer points manually" },
   { command: "redeem", description: "Redeem customer points" },

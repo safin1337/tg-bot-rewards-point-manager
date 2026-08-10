@@ -180,11 +180,16 @@ describe("stateful customer search and purchase", () => {
     );
     expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_PURCHASE_AMOUNT");
 
-    await processTelegramUpdate(context, message(18, 123456789, "525"));
+    await processTelegramUpdate(context, message(18, 123456789, "500"));
     const confirmation = (await context.states.get("123456789")).state;
     expect(confirmation).toMatchObject({
       currentStep: "CONFIRM_PURCHASE",
-      payload: { purchaseAmountBdt: 525, pointUnits: 65_625, expectedBalanceUnits: 0 }
+      payload: {
+        purchaseAmountBdt: 500,
+        pointUnits: 100_000,
+        earningPolicyId: "earning:50:1:200",
+        expectedBalanceUnits: 0
+      }
     });
 
     await processTelegramUpdate(
@@ -192,7 +197,7 @@ describe("stateful customer search and purchase", () => {
       callback(19, 123456789, `confirm:${confirmation?.payload.token ?? ""}`)
     );
     expect((await context.states.get("123456789")).state).toBeNull();
-    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(65_625);
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(100_000);
     const history = await context.transactions.listForCustomer(created.customer.id, 0);
     expect(history.transactions).toHaveLength(1);
     expect(history.transactions[0]).toMatchObject({
@@ -209,9 +214,9 @@ describe("stateful customer search and purchase", () => {
       method: "editMessageText",
       payload: { message_id: 19, reply_markup: { inline_keyboard: [] } }
     });
-    expect(purchaseSuccess).toContain("Points Earned: 6.56 points");
+    expect(purchaseSuccess).toContain("Points Earned: 10.00 points");
     expect(purchaseSuccess).toContain(
-      "Your updated reward balance: 6.56 points\nEstimated reward value: BDT 2"
+      "Your updated reward balance: 10.00 points\nEstimated reward value: BDT 3"
     );
     expect(purchaseSuccess).toContain(
       "Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop"
@@ -221,8 +226,53 @@ describe("stateful customer search and purchase", () => {
       context,
       callback(19, 123456789, `confirm:${confirmation?.payload.token ?? ""}`)
     );
-    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(65_625);
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(100_000);
     expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions).toHaveLength(1);
+  });
+
+  it.each([
+    ["missing", null],
+    ["different", "earning:80:1:125"]
+  ] as const)("rejects a purchase confirmation with a %s earning policy identifier", async (_label, policyId) => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      80,
+      new Date().toISOString()
+    );
+    const started = await context.states.start("123456789", "PURCHASE", "CONFIRM_PURCHASE", 81);
+    const staleConfirmation = await context.states.save({
+      ...started,
+      selectedCustomerId: created.customer.id,
+      selectedWhatsappNumber: created.customer.whatsappNumber,
+      payload: {
+        token: started.payload.token,
+        purchaseAmountBdt: 80,
+        pointUnits: 10_000,
+        ...(policyId === null ? {} : { earningPolicyId: policyId }),
+        expectedBalanceUnits: 0
+      }
+    });
+
+    await processTelegramUpdate(
+      context,
+      callback(82, 123456789, `confirm:${staleConfirmation.payload.token}`)
+    );
+
+    expect((await context.states.get("123456789")).state).toBeNull();
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(0);
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions).toHaveLength(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM mutation_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM leaderboard_aggregates")
+      .first<{ count: number }>())?.count).toBe(0);
+    expect(calls.some((call) => call.method === "answerCallbackQuery")).toBe(true);
+    const rejection = calls.find((call) => String(call.payload?.text).includes("reward policy changed"));
+    expect(rejection).toMatchObject({
+      method: "editMessageText",
+      payload: { message_id: 82 }
+    });
+    expect(String(rejection?.payload?.text)).toContain("restart the purchase from the dashboard");
   });
 
   it("cancels and restarts without carrying collected values", async () => {
@@ -661,7 +711,7 @@ describe("active Telegram message behavior", () => {
       callback(24_101, 123456789, `mode:f:${state?.payload.token ?? ""}`, 704)
     );
     await processTelegramUpdate(context, message(24_102, 123456789, "01712345678"));
-    await processTelegramUpdate(context, message(24_103, 123456789, "80"));
+    await processTelegramUpdate(context, message(24_103, 123456789, "50"));
     state = (await context.states.get("123456789")).state;
     const confirmationData = `confirm:${state?.payload.token ?? ""}`;
     calls.length = 0;

@@ -6,7 +6,12 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - Preserve the integer point-unit architecture. Never make floating-point points the source of truth.
 - `1 point = 10,000 point units`.
-- Purchase formula: `pointUnitsEarned = purchaseAmountBdt * 125`.
+- Use `APP_CONFIG` as the only runtime source of configurable reward ratios.
+- The default purchase formula is
+  `pointUnitsEarned = purchaseAmountBdt * 200`, derived exactly from
+  `BDT 50 = 1 point`; never duplicate the multiplier in runtime code or help text.
+- Validate configured ratios with integer arithmetic and reject any ratio that
+  cannot produce an exact supported whole-number point-unit conversion per BDT.
 - Validate safe-integer arithmetic and the supported database integer range.
 - Reward rounding for a nonnegative balance is exactly:
   `floor((pointUnits + 20,000) / 40,000)`.
@@ -14,15 +19,25 @@ These rules are mandatory for every future coding agent working in this reposito
 - Manual point and redemption parsing must start from the original string and allow at most four decimal places.
 - Telegram-visible point amounts must use exactly two decimal places, rounded half-up from integer point units at the third decimal place, with comma-grouped thousands.
 - Display rounding must never change parsing, storage, calculations, leaderboard ranking, or exact four-decimal CSV output.
+- Treat redemption-rate changes as migration-sensitive after production data
+  exists. They require a reviewed D1 migration/backfill unless the database is a
+  disposable test installation approved for reset.
 
 ## Required messages
 
-- Preserve the exact SoulShop headings.
+- Use `APP_CONFIG` as the runtime source of the brand name, application heading,
+  taglines, and reward-policy help text. Never reintroduce duplicated hardcoded
+  runtime branding or earning-rate wording.
+- Preserve the exact generated heading and message structure. With the default
+  configuration the main heading remains `SoulShop Rewards Point System`.
 - Purchase, manual-add, redemption, and balance messages must preserve these
-  exact three closing lines:
+  exact three default closing lines, generated from configurable taglines:
   `Buy More to Earn More`
   `Thank you for purchasing from us`
   `Best Wishes from SoulShop`
+- Support `{brand}` substitution in every configured tagline, allow taglines to
+  be independently edited/reordered, and escape all configured branding and
+  tagline text before Telegram HTML insertion.
 - History messages intentionally omit all three closing lines.
 - Purchase and manual-add success must preserve these exact adjacent lines:
   `Your updated reward balance: {points} points`
@@ -74,6 +89,10 @@ These rules are mandatory for every future coding agent working in this reposito
 - Answer every callback promptly, including unauthorized callbacks.
 - Button-only transitions, confirmation results, search/history pagination, and leaderboard navigation normally edit the callback's bot message. Treat `message is not modified` as success and use one send-message fallback when editing is unavailable.
 - Complete a database mutation before displaying success. An edit failure after commit must never repeat or misreport the mutation; keep enough temporary state for an idempotent retry until the success display is delivered.
+- Bind each pending purchase confirmation to the earning-policy identifier used
+  for its displayed calculation. If the configured earning policy changes,
+  clear/restart the stale workflow before any receipt, balance, transaction, or
+  leaderboard mutation.
 - After typed administrator input, send the next bot response as a new message when editing an older bot message would break chronological order. Never edit administrator messages or document messages.
 
 ## Security and privacy
@@ -90,6 +109,9 @@ These rules are mandatory for every future coding agent working in this reposito
 ## Migration and repository discipline
 
 - D1 migrations are versioned under `migrations/` and must remain trackable despite the global `*.sql` ignore.
+- Keep non-secret application customization centralized in
+  `src/config/app-config.ts`; never put secrets or production infrastructure
+  identifiers in `APP_CONFIG`.
 - Never rewrite a previously deployed migration. Add a new migration.
 - Avoid compound `CREATE TRIGGER ... BEGIN ... END` statements in Wrangler-managed remote D1 migrations unless they have been verified against an isolated remote D1 database; keep required retention enforcement in explicit atomic batch statements.
 - Preserve existing customer balances during schema changes. Before approved retention pruning, backfill existing detailed history into mutation receipts, mutation update-ID high-water marks, and applicable leaderboard aggregates.
@@ -103,6 +125,13 @@ Run all commands and fix every failure:
 
 ```powershell
 npm run db:migrate:local
+npm run check
+```
+
+The `check` script must run the same individual quality gates below. When
+diagnosing failures, run and fix them separately:
+
+```powershell
 npm run typecheck
 npm run lint
 npm run test:run

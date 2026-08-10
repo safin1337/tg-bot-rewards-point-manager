@@ -1,5 +1,5 @@
 import { dashboardKeyboard } from "../telegram/keyboards";
-import { BRAND, dashboardMessage, helpMessage } from "../telegram/messages";
+import { BRAND, BRAND_NAME_HTML, dashboardMessage, helpMessage } from "../telegram/messages";
 import type { Operation } from "../types/models";
 import type { WorkflowContext } from "./context";
 import { startOperation } from "./common";
@@ -40,7 +40,7 @@ export const handleCommand = async (
     await context.states.clear(adminId);
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the SoulShop rewards management dashboard.`,
+      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`,
       { replyMarkup: dashboardKeyboard() }
     );
     return true;

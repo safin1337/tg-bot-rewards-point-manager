@@ -1,4 +1,4 @@
-# SoulShop V2.0.3 database design
+# Telegram Loyalty Rewards Point Manager V2.0.4 database design
 
 ## Sources of truth
 
@@ -6,6 +6,18 @@
 of truth for an available point balance, and `rounded_reward_bdt` is
 recalculated from the total with
 `floor((pointUnits + 20,000) / 40,000)` after every mutation.
+
+The default V2.0.4 earning policy is `BDT 50 = 1 point`, so each whole BDT
+produces exactly 200 point units. The rate is derived and validated from
+`src/config/app-config.ts`; it is not stored as a floating-point value. The
+redemption policy remains `4 points = BDT 1`, or 40,000 point units per reward
+BDT.
+
+V2.0.4 makes no schema or data change. Existing balances, detailed
+transactions, mutation receipts, reward snapshots, and leaderboard aggregates
+remain exactly as stored. The new earning policy applies only to later
+purchases. A week or month spanning a deployment may therefore contain gross
+purchase earnings calculated under both the old and new earning policies.
 
 Two-decimal point formatting is a Telegram presentation rule only. It is
 calculated from integer point units with half-up rounding and is never stored
@@ -53,6 +65,12 @@ creation remains append-only, after which the same atomic D1 batch:
    receipts;
 7. prunes obsolete leaderboard periods; and
 8. runs a retention/integrity guard.
+
+Before step 1, the application validates that purchase point units match the
+current configured earning policy. Telegram purchase confirmations also carry
+the earning-policy identifier used to calculate the displayed points. A
+pre-deployment confirmation with a missing or different identifier is cleared
+and rejected before this atomic batch begins.
 
 The adjacent transaction-pruning and completed-receipt-pruning statements
 enforce paired deletion inside the same atomic D1 batch. Any transaction or

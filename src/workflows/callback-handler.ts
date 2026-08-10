@@ -1,6 +1,7 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone } from "../domain/phone";
 import { leaderboardPeriods } from "../domain/leaderboard";
+import { EARNING_POLICY_ID } from "../domain/rewards";
 import { newStateToken } from "../database/state-repository";
 import {
   cancelKeyboard,
@@ -14,6 +15,7 @@ import {
 } from "../telegram/keyboards";
 import {
   BRAND,
+  BRAND_NAME_HTML,
   addCustomerSuccessMessage,
   helpMessage,
   leaderboardMenuMessage,
@@ -112,6 +114,16 @@ const confirmMutation = async (
     await stale(context, target);
     return;
   }
+  if (type === "PURCHASE" && state.payload.earningPolicyId !== EARNING_POLICY_ID) {
+    await context.states.clear(state.administratorTelegramId);
+    await display(
+      context,
+      target,
+      `${BRAND}\n\n⚠️ The reward policy changed after this purchase was calculated. No points were changed. Please restart the purchase from the dashboard.`,
+      dashboardKeyboard()
+    );
+    return;
+  }
   try {
     const result = await context.mutations.mutate({
       customerId: state.selectedCustomerId,
@@ -181,7 +193,12 @@ const handleExport = async (
       && progress !== "BOTH_SENT"
     ) {
       const file = await context.exports.customersCsv();
-      await context.telegram.sendDocument(target.chatId, file.filename, file.contents, "SoulShop customer balances");
+      await context.telegram.sendDocument(
+        target.chatId,
+        file.filename,
+        file.contents,
+        `${BRAND_NAME_HTML} customer balances`
+      );
       progress = choice === "a" ? "CUSTOMERS_SENT" : "BOTH_SENT";
       await context.idempotency.setExportProgress(updateId, progress);
     }
@@ -191,7 +208,12 @@ const handleExport = async (
       && progress !== "BOTH_SENT"
     ) {
       const file = await context.exports.transactionsCsv();
-      await context.telegram.sendDocument(target.chatId, file.filename, file.contents, "SoulShop transaction history");
+      await context.telegram.sendDocument(
+        target.chatId,
+        file.filename,
+        file.contents,
+        `${BRAND_NAME_HTML} transaction history`
+      );
       progress = "BOTH_SENT";
       await context.idempotency.setExportProgress(updateId, progress);
     }
@@ -230,7 +252,7 @@ export const handleCallback = async (
     await display(
       context,
       target,
-      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the SoulShop rewards management dashboard.`,
+      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`,
       dashboardKeyboard()
     );
     return;

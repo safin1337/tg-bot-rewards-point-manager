@@ -1,6 +1,59 @@
 # Changelog
 
-All notable changes to the SoulShop Rewards Point System are documented in this file.
+All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
+
+## [2.0.4] - 2026-08-10
+
+### Public-friendly configuration
+
+- Repositioned the project as a reusable, production-ready Telegram loyalty
+  and reward-point manager with a new public README introduction while
+  preserving attribution to the original SoulShop — Bangladesh's E-Shop build.
+- Added `src/config/app-config.ts` as the non-secret runtime source for the
+  brand name, application heading, independently editable taglines, and reward
+  policy.
+- Added `{brand}` placeholder substitution, escaped configurable Telegram HTML,
+  and safe brand-derived CSV filename prefixes with a deterministic fallback.
+- Documented the infrastructure identifiers that remain separate from runtime
+  branding and added a public security-reporting policy.
+
+### Reward policy and deployment safety
+
+- Changed the default future-purchase earning policy from BDT 80 = 1 point to
+  BDT 50 = 1 point, derived as exactly 200 integer point units per BDT.
+- Kept the redemption policy unchanged at 4 points = BDT 1 (1 point = BDT
+  0.25) and preserved the existing half-up reward rounding rule.
+- Added integer-only configuration validation that rejects non-exact or
+  unsupported point-unit ratios. Runtime help text now derives from the same
+  validated policy.
+- Bound purchase confirmations to the earning-policy identifier used for their
+  displayed calculation. A pre-deployment stale confirmation is acknowledged,
+  cleared, and rejected before any customer, transaction, leaderboard, or
+  mutation-receipt write.
+- Existing balances, historical transactions, reward snapshots, mutation
+  receipts, and leaderboard totals remain unchanged. New purchases use the new
+  policy, so an active week or month can contain purchases from both policies.
+- Added no D1 migration, backfill, data rewrite, or infrastructure rename.
+
+### Documentation and validation
+
+- Added `docs/CUSTOMIZATION.md` with branding, tagline, earning-policy,
+  redemption-migration, infrastructure, privacy, and local-testing guidance.
+- Added `docs/V2.0.4-RELEASE.md` with reviewed branch, pull-request, deployment,
+  live-verification, tagging, and rollback procedures.
+- Anchored the generated-export ignore rule to `/exports/` so the required
+  `src/exports/export-service.ts` source is included in public clones while
+  generated CSV exports remain ignored.
+- Updated database/workflow documentation and permanent agent rules to keep
+  branding and configurable rates centralized, integer-safe, escaped, and
+  compatible with the exact Telegram message contracts.
+- Added regression coverage for default and alternative branding, placeholder
+  substitution, Telegram HTML escaping, filename slugs, exact/invalid reward
+  ratios, generated help text, the new purchase rate, and stale confirmation
+  rejection without mutation.
+- No commit, push, merge, tag, production deployment, webhook registration,
+  secret change, or remote D1 operation was performed during release
+  preparation.
 
 ## [2.0.3] - 2026-08-07
 

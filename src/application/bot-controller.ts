@@ -1,5 +1,5 @@
 import type { TelegramUpdate } from "../telegram/types";
-import { BRAND, dashboardMessage } from "../telegram/messages";
+import { BRAND, BRAND_NAME_HTML, dashboardMessage } from "../telegram/messages";
 import { dashboardKeyboard } from "../telegram/keyboards";
 import { handleCallback } from "../workflows/callback-handler";
 import { extractCommand, handleCommand } from "../workflows/command-handler";
@@ -7,7 +7,7 @@ import type { WorkflowContext } from "../workflows/context";
 import { handleStateMessage } from "../workflows/message-handler";
 import { editOrSendFallback } from "../telegram/active-message";
 
-const unauthorizedMessage = `${BRAND}\n\n⛔ This private bot is restricted to the authorized SoulShop administrator.`;
+const unauthorizedMessage = `${BRAND}\n\n⛔ This private bot is restricted to the authorized ${BRAND_NAME_HTML} administrator.`;
 const oldUpdateMessage = `${BRAND}\n\n⚠️ An older Telegram update was ignored so it cannot continue or replace the current operation.`;
 
 export const processTelegramUpdate = async (

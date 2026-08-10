@@ -16,11 +16,10 @@ import {
 
 describe("reward calculations", () => {
   it.each([
-    [1, 125, "0.0125"],
-    [60, 7_500, "0.75"],
-    [80, 10_000, "1"],
-    [100, 12_500, "1.25"],
-    [525, 65_625, "6.5625"]
+    [1, 200, "0.02"],
+    [50, 10_000, "1"],
+    [100, 20_000, "2"],
+    [500, 100_000, "10"]
   ])("converts BDT %i exactly", (bdt, units, points) => {
     expect(purchaseToPointUnits(bdt)).toBe(units);
     expect(formatPointUnits(units)).toBe(points);
@@ -104,7 +103,7 @@ describe("point parsing and formatting", () => {
     expect(formatPointUnitsForDisplay(units)).toBe(expected);
   });
 
-  it.each([["525", 525], ["0001", 1]])("parses whole BDT %s", (input, expected) => {
+  it.each([["500", 500], ["0001", 1]])("parses whole BDT %s", (input, expected) => {
     expect(parsePurchaseAmount(input)).toBe(expected);
   });
 

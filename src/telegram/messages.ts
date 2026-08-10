@@ -1,14 +1,37 @@
+import {
+  APP_CONFIG,
+  deriveAppConfiguration,
+  type AppConfiguration
+} from "../config/app-config";
 import { formatPointUnitsForDisplay } from "../domain/points";
 import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
 import type { Customer, LeaderboardEntry, LeaderboardPeriodType, Operation, RewardTransaction } from "../types/models";
 import { escapeHtml } from "../utils/html";
 import { formatDhakaDateTime } from "../utils/time";
 
-export const BRAND = "🏆 <b>SoulShop Rewards Point System</b>";
-export const TAGLINES = "Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop";
+export interface TelegramBranding {
+  brandNameHtml: string;
+  headingHtml: string;
+  taglinesHtml: string;
+}
+
+export const telegramBrandingFromConfig = (config: AppConfiguration): TelegramBranding => {
+  const runtime = deriveAppConfiguration(config);
+  return {
+    brandNameHtml: escapeHtml(runtime.brand.name),
+    headingHtml: `🏆 <b>${escapeHtml(runtime.brand.fullHeading)}</b>`,
+    taglinesHtml: runtime.brand.taglines.map(escapeHtml).join("\n")
+  };
+};
+
+const TELEGRAM_BRANDING = telegramBrandingFromConfig(APP_CONFIG);
+
+export const BRAND_NAME_HTML = TELEGRAM_BRANDING.brandNameHtml;
+export const BRAND = TELEGRAM_BRANDING.headingHtml;
+export const TAGLINES = TELEGRAM_BRANDING.taglinesHtml;
 
 export const dashboardMessage = (): string =>
-  `${BRAND}\n\nWelcome to the SoulShop rewards management dashboard.`;
+  `${BRAND}\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`;
 
 type CustomerSelectionOperation = Exclude<Operation, "ADD_CUSTOMER" | "EXPORT" | "LEADERBOARD">;
 
@@ -23,27 +46,74 @@ const CUSTOMER_SELECTION_HEADINGS = {
 export const selectionMessage = (operation: CustomerSelectionOperation): string =>
   `${BRAND}\n\n${CUSTOMER_SELECTION_HEADINGS[operation]}\n\nSelect a customer:`;
 
-export const helpMessage = (): string => `${BRAND}
+const gcd = (left: bigint, right: bigint): bigint => {
+  let a = left;
+  let b = right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+};
+
+const exactDecimalOrFraction = (numerator: number, denominator: number): string => {
+  const divisor = gcd(BigInt(numerator), BigInt(denominator));
+  const reducedNumerator = BigInt(numerator) / divisor;
+  const reducedDenominator = BigInt(denominator) / divisor;
+  let remainder = reducedDenominator;
+  let twos = 0;
+  let fives = 0;
+  while (remainder % 2n === 0n) {
+    twos += 1;
+    remainder /= 2n;
+  }
+  while (remainder % 5n === 0n) {
+    fives += 1;
+    remainder /= 5n;
+  }
+  if (remainder !== 1n) return `${reducedNumerator}/${reducedDenominator}`;
+  const scale = Math.max(twos, fives);
+  const scaled = reducedNumerator * (10n ** BigInt(scale)) / reducedDenominator;
+  if (scale === 0) return String(scaled);
+  const digits = String(scaled).padStart(scale + 1, "0");
+  const decimal = `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return decimal.replace(/0+$/, "").replace(/\.$/, "");
+};
+
+export const helpMessageFromConfig = (config: AppConfiguration): string => {
+  const runtime = deriveAppConfiguration(config);
+  const branding = telegramBrandingFromConfig(config);
+  const earningPointLabel = runtime.rewards.earning.earnPoints === 1 ? "point" : "points";
+  const redemptionPointLabel = runtime.rewards.redemption.points === 1 ? "point" : "points";
+  const redemptionVerb = runtime.rewards.redemption.points === 1 ? "equals" : "equal";
+  const valuePerPoint = exactDecimalOrFraction(
+    runtime.rewards.redemption.valueBdt,
+    runtime.rewards.redemption.points
+  );
+  return `${branding.headingHtml}
 
 <b>Help</b>
 
 • /addcustomer — register a zero-point customer.
 • For purchase, points, redemption, balance, or history, search with exactly the final 4 or 5 phone digits or enter the complete number.
 • Spaces and supported hyphens are accepted in complete phone numbers.
-• /purchase — every BDT 80 earns 1 point; fractional points are retained.
+• /purchase — every BDT ${runtime.rewards.earning.spendBdt} earns ${runtime.rewards.earning.earnPoints} ${earningPointLabel}; fractional points are retained.
 • /addpoints — add a positive value with up to four decimal places and an optional note.
 • /redeem — redeem a positive value with up to four decimal places, never more than the balance.
-• Telegram point amounts display with two decimals using standard half-up rounding; exact four-decimal precision is retained.
-• Reward value is points × BDT 0.25 and the displayed BDT value is rounded half-up.
+• Telegram point amounts display with two decimals using standard half-up rounding.
+• Stored point units retain exact precision: 1 point = 10,000 point units.
+• ${runtime.rewards.redemption.points} ${redemptionPointLabel} ${redemptionVerb} BDT ${runtime.rewards.redemption.valueBdt} reward value. Equivalently, 1 point equals BDT ${valuePerPoint}.
+• Displayed BDT reward values are rounded half-up using the existing reward rule.
 • /balance — show the latest points and rounded reward value.
 • /history — show newest transactions first.
 • /export — send customer and/or transaction CSV files.
 • /leaderboard — view weekly/monthly gross earned points or reset the current period.
 • /cancel — cancel the active operation.
-• /restart — restart the active operation from its first step.
+• /restart — restart the active operation from its first step.`;
+};
 
-BDT 525 = 6.56 displayed points
-Reward value ≈ BDT 2`;
+export const helpMessage = (): string => helpMessageFromConfig(APP_CONFIG);
 
 export const leaderboardMenuMessage = (): string => `${BRAND}
 
@@ -63,7 +133,7 @@ export const leaderboardMessage = (
       const ordinal = rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`;
       return `${ordinal} ${escapeHtml(entry.whatsappNumber)} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} points`;
     });
-  return `🏆 <b>SoulShop ${title} Leaderboard</b>
+  return `🏆 <b>${BRAND_NAME_HTML} ${title} Leaderboard</b>
 ${escapeHtml(period.label)} — ${period.running ? "Running" : "Completed"}
 
 ${lines.join("\n")}`;

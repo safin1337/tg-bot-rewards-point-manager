@@ -53,7 +53,7 @@ const mutate = async (
   customerId: customer.id,
   type,
   pointUnits,
-  purchaseAmountBdt: type === "PURCHASE" ? 80 : null,
+  purchaseAmountBdt: type === "PURCHASE" ? 50 : null,
   note: null,
   telegramUpdateId: updateId,
   expectedBalanceUnits

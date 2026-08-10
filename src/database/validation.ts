@@ -128,6 +128,16 @@ const parsePayload = (json: string): StatePayload => {
       payload[key] = field;
     }
   }
+  if (row.earningPolicyId !== undefined) {
+    if (
+      typeof row.earningPolicyId !== "string"
+      || !/^earning:\d+:\d+:\d+$/.test(row.earningPolicyId)
+      || row.earningPolicyId.length > 80
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.earningPolicyId = row.earningPolicyId;
+  }
   if (row.note !== undefined) {
     if (typeof row.note !== "string" || row.note.length === 0 || row.note.length > 500) {
       throw new Error("Invalid conversation state.");

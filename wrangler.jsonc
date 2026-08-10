@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "soulshop-rewards",
+	"name": "soulshop-rewards", // Optional: use your own Cloudflare Worker name.
 	"main": "src/index.ts",
 	"compatibility_date": "2026-07-29",
 	"workers_dev": true,
@@ -14,9 +14,9 @@
 	},
 	"d1_databases": [
 		{
-			"binding": "DB",
-			"database_name": "soulshop-rewards-db",
-			"database_id": "e5442ada-e252-4a8a-b525-5d24ac3d3c60",
+			"binding": "DB", // Keep this as DB; the application reads env.DB.
+			"database_name": "soulshop-rewards-db", // New users may use their own D1 database name.
+			"database_id": "e5442ada-e252-4a8a-b525-5d24ac3d3c60", // New users must replace this with their own D1 database ID.
 			"migrations_dir": "migrations"
 		}
 	]

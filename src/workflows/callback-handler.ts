@@ -573,6 +573,50 @@ export const handleCallback = async (
     return;
   }
 
+  match = /^redeemall:([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[1]);
+    if (state === null) return;
+    if (
+      state.activeOperation !== "REDEEM"
+      || state.currentStep !== "AWAIT_POINT_AMOUNT"
+      || state.selectedCustomerId === null
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null) {
+      await stale(context, target);
+      return;
+    }
+    if (customer.pointBalanceUnits === 0) {
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n⚠️ This customer has no points available to redeem.`,
+        cancelKeyboard()
+      );
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "CONFIRM_REDEEM",
+      payload: {
+        token: state.payload.token,
+        pointUnits: customer.pointBalanceUnits,
+        expectedBalanceUnits: customer.pointBalanceUnits
+      }
+    });
+    await display(
+      context,
+      target,
+      pointConfirmation(customer, "REDEEM", customer.pointBalanceUnits, null),
+      confirmKeyboard(saved.payload.token, "✅ Confirm Redemption")
+    );
+    return;
+  }
+
   match = /^confirm:([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[1]);

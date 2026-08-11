@@ -28,6 +28,13 @@ export const cancelKeyboard = (): InlineKeyboardMarkup => ({
   inline_keyboard: [[{ text: "❌ Cancel", callback_data: "cancel" }]]
 });
 
+export const redeemAmountKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "💯 Redeem All Points", callback_data: `redeemall:${token}` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
 export const selectionKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "🔎 Search by Last Digits", callback_data: `mode:s:${token}` }],

@@ -6,6 +6,7 @@ import {
   exportKeyboard,
   historyKeyboard,
   leaderboardMenuKeyboard,
+  redeemAmountKeyboard,
   resultsKeyboard,
   selectionKeyboard
 } from "../telegram/keyboards";
@@ -147,7 +148,7 @@ export const promptAfterSelection = async (
       context,
       chatId,
       `${base}\n\nCurrent Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points\nCurrent Reward Value: ≈ BDT ${customer.roundedRewardBdt}\n\nEnter the number of points you want to redeem.`,
-      cancelKeyboard(),
+      redeemAmountKeyboard(state.payload.token),
       target
     );
     return;

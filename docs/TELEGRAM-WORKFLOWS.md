@@ -30,6 +30,23 @@ the generated heading remains `SoulShop Rewards Point System`.
 - The rule applies to prompts, confirmations, success and balance messages,
   insufficient-balance notices, customer details, history, and leaderboards.
 
+## Redeem All Points
+
+- After a customer is selected for redemption, the amount prompt offers
+  `Redeem All Points` in addition to typed partial redemption.
+- The callback contains only the current state token. The Worker validates the
+  active `REDEEM` operation, `AWAIT_POINT_AMOUNT` step, selected D1 customer ID,
+  and token before loading the latest customer row.
+- The prepared redemption amount and expected balance both use the exact stored
+  `point_balance_units`. They never use the two-decimal Telegram display text,
+  so a balance such as 1,300.6965 points can display as 1,300.70 and still be
+  redeemed completely without leaving or over-requesting hidden precision.
+- Pressing the button only prepares the existing confirmation panel. Points
+  change only after `Confirm Redemption`, through the same atomic,
+  expected-balance, and idempotency protections as a typed redemption.
+- If the balance changes before confirmation, the mutation is rejected and the
+  operation must restart. A zero balance cannot create a redemption.
+
 ## Success and balance labels
 
 - Purchase and manual-add results use `Your updated reward balance` followed by

@@ -4,6 +4,23 @@ All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are docum
 
 ## [2.0.4] - 2026-08-10
 
+### Exact full-balance redemption
+
+- Added a `Redeem All Points` button to the redemption amount prompt while
+  preserving manual entry for partial redemptions.
+- The button reads the selected customer's exact integer point balance from D1
+  and prepares the existing confirmation step. It does not derive the amount
+  from the rounded two-decimal Telegram display.
+- Preserved callback acknowledgement, active-operation and token validation,
+  customer-ID authority, expected-balance conflict protection, atomic mutation,
+  idempotency, and the requirement to confirm before points are changed.
+- Added callback-size and end-to-end regression coverage using a balance whose
+  hidden four-decimal precision displays as `1,300.70` and is redeemed exactly
+  to zero.
+- Kept the project at V2.0.4. No D1 schema migration, data rewrite, reward-rate
+  change, remote database operation, deployment, or Git operation was required
+  or performed for this maintenance change.
+
 ### Public-friendly configuration
 
 - Repositioned the project as a reusable, production-ready Telegram loyalty

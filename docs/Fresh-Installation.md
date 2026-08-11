@@ -343,7 +343,7 @@ Using only the configured administrator account:
 3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
 4. `/purchase` finds the customer by four or five final digits, records BDT 50 as exactly 1 point and BDT 500 as exactly 10 points, and displays them as 1.00 and 10.00 points.
 5. `/addpoints` adds a fractional value, safely displays an HTML-like note, and labels the resulting total as the updated reward balance.
-6. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values.
+6. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values. Verify that `Redeem All Points` still requires confirmation and reduces an exact balance with hidden third/fourth decimal precision to `0.00` without an insufficient-balance error.
 7. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
 8. `/history` shows newest-first entries in Asia/Dhaka time.
 9. `/export` sends the selected CSV file(s).

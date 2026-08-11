@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { extractCommand } from "../src/workflows/command-handler";
-import { dashboardKeyboard, selectionKeyboard } from "../src/telegram/keyboards";
+import {
+  dashboardKeyboard,
+  redeemAmountKeyboard,
+  selectionKeyboard
+} from "../src/telegram/keyboards";
 import { helpMessage } from "../src/telegram/messages";
 
 describe("registered command routing", () => {
@@ -33,6 +37,7 @@ describe("help requirement matrix", () => {
     "fractional points",
     "/addpoints",
     "/redeem",
+    "Redeem All Points",
     "rounded half-up",
     "/balance",
     "/history",
@@ -53,11 +58,19 @@ describe("Telegram callback size and dashboard actions", () => {
   it("keeps every static callback within Telegram's 64-byte limit", () => {
     const callbacks = [
       ...dashboardKeyboard().inline_keyboard.flat(),
-      ...selectionKeyboard("abcdefghij").inline_keyboard.flat()
+      ...selectionKeyboard("abcdefghij").inline_keyboard.flat(),
+      ...redeemAmountKeyboard("abcdefghijklmnop").inline_keyboard.flat()
     ].map((button) => button.callback_data);
     for (const callback of callbacks) {
       expect(new TextEncoder().encode(callback).byteLength).toBeLessThanOrEqual(64);
     }
+  });
+
+  it("offers an exact-balance Redeem All Points action", () => {
+    expect(redeemAmountKeyboard("abcdefghij").inline_keyboard.flat()).toContainEqual({
+      text: "💯 Redeem All Points",
+      callback_data: "redeemall:abcdefghij"
+    });
   });
 
   it.each([

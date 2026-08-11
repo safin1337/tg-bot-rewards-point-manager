@@ -94,6 +94,10 @@ The source is split into domain calculations, validated D1 repositories, atomic 
   ratios must produce an exact supported integer point-unit conversion.
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
 - Manual additions and redemptions accept up to four decimal places.
+- The redemption amount prompt also offers `Redeem All Points`. It selects the
+  customer's exact stored integer balance, then shows the normal confirmation
+  before any mutation. This avoids treating a two-decimal display value as the
+  underlying exact amount.
 - Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
 - Completed mutation receipts correspond to retained detail rows; a per-customer update-ID high-water mark rejects delayed updates after their bounded receipts are pruned.
 
@@ -140,7 +144,7 @@ balance/value. These customer-facing labels do not change reward calculations.
 | `/start` | Open the dashboard |
 | `/purchase` | Record a purchase |
 | `/addpoints` | Add fractional points manually |
-| `/redeem` | Redeem fractional points |
+| `/redeem` | Redeem a typed fractional amount or the exact full balance |
 | `/balance` | Check the latest balance |
 | `/history` | View newest-first reward history |
 | `/addcustomer` | Register a zero-point customer |

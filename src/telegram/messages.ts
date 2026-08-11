@@ -100,7 +100,7 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 • Spaces and supported hyphens are accepted in complete phone numbers.
 • /purchase — every BDT ${runtime.rewards.earning.spendBdt} earns ${runtime.rewards.earning.earnPoints} ${earningPointLabel}; fractional points are retained.
 • /addpoints — add a positive value with up to four decimal places and an optional note.
-• /redeem — redeem a positive value with up to four decimal places, never more than the balance.
+• /redeem — enter a positive value with up to four decimal places, or use Redeem All Points to select the exact stored balance; confirmation is still required.
 • Telegram point amounts display with two decimals using standard half-up rounding.
 • Stored point units retain exact precision: 1 point = 10,000 point units.
 • ${runtime.rewards.redemption.points} ${redemptionPointLabel} ${redemptionVerb} BDT ${runtime.rewards.redemption.valueBdt} reward value. Equivalently, 1 point equals BDT ${valuePerPoint}.

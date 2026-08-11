@@ -66,6 +66,11 @@ These rules are mandatory for every future coding agent working in this reposito
 - Show at most eight deterministic customer results per page.
 - `Search Again` must appear on result and no-match screens, preserve the operation, clear old digits/page/selection, and rotate the state token so old results are stale.
 - Treat the D1 customer ID as authoritative after selection; never trust a callback phone number.
+- `Redeem All Points` must load the selected customer's exact current
+  `point_balance_units` after validating the active operation, step, token, and
+  customer ID. It must prepare the normal confirmation with that same value as
+  `expectedBalanceUnits`; never derive a full redemption from rounded display
+  text or bypass confirmation.
 
 ## Data and workflow invariants
 

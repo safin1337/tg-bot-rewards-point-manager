@@ -7,6 +7,10 @@ of truth for an available point balance, and `rounded_reward_bdt` is
 recalculated from the total with
 `floor((pointUnits + 20,000) / 40,000)` after every mutation.
 
+`Redeem All Points` reads this exact integer source of truth and carries it into
+the existing expected-balance confirmation and atomic mutation. It does not
+parse the two-decimal display value and requires no schema or data migration.
+
 The default V2.0.4 earning policy is `BDT 50 = 1 point`, so each whole BDT
 produces exactly 200 point units. The rate is derived and validated from
 `src/config/app-config.ts`; it is not stored as a floating-point value. The

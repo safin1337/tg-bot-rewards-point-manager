@@ -419,6 +419,79 @@ describe("remaining end-to-end workflows", () => {
     expect(success).toMatchObject({ method: "editMessageText", payload: { message_id: 46 } });
   });
 
+  it("redeems the exact stored balance through Redeem All Points after confirmation", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01332391100"),
+      47,
+      new Date().toISOString()
+    );
+    const exactBalanceUnits = 13_006_965;
+    await context.mutations.mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: exactBalanceUnits,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 48,
+      expectedBalanceUnits: 0
+    });
+
+    await processTelegramUpdate(context, message(49, 123456789, "/redeem"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(50, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(51, 123456789, "01332391100"));
+    state = (await context.states.get("123456789")).state;
+
+    const amountPrompt = calls.filter((call) =>
+      String(call.payload?.text).includes("Enter the number of points you want to redeem")
+    ).at(-1);
+    expect(amountPrompt?.payload?.reply_markup).toEqual({
+      inline_keyboard: [[{
+        text: "💯 Redeem All Points",
+        callback_data: `redeemall:${state?.payload.token ?? ""}`
+      }], [{ text: "❌ Cancel", callback_data: "cancel" }]]
+    });
+
+    await processTelegramUpdate(
+      context,
+      callback(52, 123456789, `redeemall:${state?.payload.token ?? ""}`)
+    );
+    state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({
+      currentStep: "CONFIRM_REDEEM",
+      payload: {
+        pointUnits: exactBalanceUnits,
+        expectedBalanceUnits: exactBalanceUnits
+      }
+    });
+    const confirmation = calls.filter((call) =>
+      String(call.payload?.text).includes("Confirm Redemption")
+    ).at(-1);
+    expect(String(confirmation?.payload?.text)).toContain("Points to Redeem: 1,300.70 points");
+    expect(String(confirmation?.payload?.text)).toContain("New Points: 0.00 points");
+
+    await processTelegramUpdate(
+      context,
+      callback(53, 123456789, `confirm:${state?.payload.token ?? ""}`)
+    );
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(0);
+    expect((await context.states.get("123456789")).state).toBeNull();
+    const history = await context.transactions.listForCustomer(created.customer.id, 0);
+    expect(history.transactions[0]).toMatchObject({
+      transactionType: "REDEEM",
+      pointsDeltaUnits: -exactBalanceUnits,
+      balanceAfterUnits: 0
+    });
+    const success = calls.filter((call) =>
+      String(call.payload?.text).includes("Reward Points Successfully Redeemed")
+    ).at(-1);
+    expect(String(success?.payload?.text)).toContain("Your remaining reward balance: 0.00 points");
+  });
+
   it("shows current balance and newest-first history through full-number selection", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     const created = await context.customers.createZeroBalance(

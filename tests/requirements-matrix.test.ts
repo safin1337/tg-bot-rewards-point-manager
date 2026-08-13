@@ -34,6 +34,8 @@ describe("help requirement matrix", () => {
     "complete number",
     "Spaces and supported hyphens",
     "every BDT 50 earns 1 point",
+    "positive whole-number BDT amount",
+    "rounded half-up to four decimal places before storage",
     "fractional points",
     "/addpoints",
     "/redeem",

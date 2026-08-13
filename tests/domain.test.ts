@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "../src/domain/errors";
+import {
+  APP_CONFIG,
+  APP_RUNTIME_CONFIG,
+  deriveAppConfiguration,
+  type AppConfiguration
+} from "../src/config/app-config";
 import { cleanPhoneInput, normalizePhone, validateSearchDigits } from "../src/domain/phone";
 import {
   formatPointUnits,
@@ -9,20 +15,39 @@ import {
 } from "../src/domain/points";
 import {
   purchaseToPointUnits,
+  purchaseToPointUnitsForPolicy,
   roundRewardBdt,
   safeBalanceAfter,
   SQLITE_MAX_INTEGER
 } from "../src/domain/rewards";
 
 describe("reward calculations", () => {
+  const flatPolicy = () => {
+    const config: AppConfiguration = {
+      ...APP_CONFIG,
+      rewards: {
+        ...APP_CONFIG.rewards,
+        earning: { ...APP_CONFIG.rewards.earning, mode: "flat" }
+      }
+    };
+    return deriveAppConfiguration(config).rewards.earning;
+  };
+
   it.each([
     [1, 200, "0.02"],
     [50, 10_000, "1"],
     [100, 20_000, "2"],
     [500, 100_000, "10"]
-  ])("converts BDT %i exactly", (bdt, units, points) => {
-    expect(purchaseToPointUnits(bdt)).toBe(units);
+  ])("converts BDT %i with the explicit flat policy", (bdt, units, points) => {
+    expect(purchaseToPointUnitsForPolicy(bdt, flatPolicy())).toBe(units);
     expect(formatPointUnits(units)).toBe(points);
+  });
+
+  it("uses the earning mode currently selected in APP_CONFIG", () => {
+    const expected = APP_RUNTIME_CONFIG.rewards.earning.mode === "flat"
+      ? 400_200
+      : 400_000;
+    expect(purchaseToPointUnits(2_001)).toBe(expected);
   });
 
   it.each([
@@ -41,6 +66,96 @@ describe("reward calculations", () => {
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER])("rejects unsafe purchase input %s", (value) => {
     expect(() => purchaseToPointUnits(value)).toThrow(DomainError);
+  });
+
+  const bracketedPolicy = (pointFloorProtection: boolean) => {
+    const config: AppConfiguration = {
+      ...APP_CONFIG,
+      rewards: {
+        ...APP_CONFIG.rewards,
+        earning: {
+          ...APP_CONFIG.rewards.earning,
+          mode: "bracketed",
+          bracketed: {
+            ...APP_CONFIG.rewards.earning.bracketed,
+            pointFloorProtection
+          }
+        }
+      }
+    };
+    return deriveAppConfiguration(config).rewards.earning;
+  };
+
+  it.each([
+    [1, 200],
+    [2_000, 400_000],
+    [2_001, 333_500],
+    [4_000, 666_667],
+    [4_001, 571_571],
+    [6_000, 857_143],
+    [6_001, 750_125],
+    [25_000, 3_125_000],
+    [25_001, 2_500_100]
+  ])("applies the unprotected whole-order bracket at BDT %i", (amount, expected) => {
+    expect(purchaseToPointUnitsForPolicy(amount, bracketedPolicy(false))).toBe(expected);
+  });
+
+  it.each([
+    [2_000, 400_000],
+    [2_001, 400_000],
+    [2_400, 400_000],
+    [2_401, 400_167],
+    [4_001, 666_667],
+    [6_001, 857_143],
+    [25_001, 3_125_000]
+  ])("prevents bracket-boundary drops at BDT %i", (amount, expected) => {
+    expect(purchaseToPointUnitsForPolicy(amount, bracketedPolicy(true))).toBe(expected);
+  });
+
+  it("uses one whole-order bracket rather than progressive slabs", () => {
+    expect(purchaseToPointUnitsForPolicy(4_000, bracketedPolicy(false))).toBe(666_667);
+    expect(purchaseToPointUnitsForPolicy(4_000, bracketedPolicy(false))).not.toBe(733_333);
+  });
+
+  it("rounds earned points half-up to four decimal places using integer arithmetic", () => {
+    const config: AppConfiguration = {
+      ...APP_CONFIG,
+      rewards: {
+        ...APP_CONFIG.rewards,
+        earning: {
+          ...APP_CONFIG.rewards.earning,
+          mode: "flat",
+          flat: {
+            policyId: "half-up-test",
+            spendBdt: 32,
+            earnPoints: 1
+          }
+        }
+      }
+    };
+    const earning = deriveAppConfiguration(config).rewards.earning;
+    expect(purchaseToPointUnitsForPolicy(1, earning)).toBe(313);
+    expect(formatPointUnits(313)).toBe("0.0313");
+  });
+
+  it("rounds bracketed earnings half-up to four decimal places", () => {
+    const config: AppConfiguration = {
+      ...APP_CONFIG,
+      rewards: {
+        ...APP_CONFIG.rewards,
+        earning: {
+          ...APP_CONFIG.rewards.earning,
+          mode: "bracketed",
+          bracketed: {
+            policyId: "bracket-half-up-test",
+            pointFloorProtection: false,
+            brackets: [{ maxPurchaseBdt: null, spendBdt: 32, earnPoints: 1 }]
+          }
+        }
+      }
+    };
+    const earning = deriveAppConfiguration(config).rewards.earning;
+    expect(purchaseToPointUnitsForPolicy(1, earning)).toBe(313);
   });
 
   it("prevents unsafe and negative balances", () => {
@@ -107,7 +222,7 @@ describe("point parsing and formatting", () => {
     expect(parsePurchaseAmount(input)).toBe(expected);
   });
 
-  it.each(["0", "-1", "1.5", "1.", "abc", " 5"])("rejects invalid BDT %s", (input) => {
+  it.each(["0", "-1", "1.5", "2000.50", "1.", "abc", " 5"])("rejects invalid BDT %s", (input) => {
     expect(() => parsePurchaseAmount(input)).toThrow(DomainError);
   });
 });

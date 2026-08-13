@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.4 database design
+# Telegram Loyalty Rewards Point Manager V2.0.5 database design
 
 ## Sources of truth
 
@@ -11,17 +11,24 @@ recalculated from the total with
 the existing expected-balance confirmation and atomic mutation. It does not
 parse the two-decimal display value and requires no schema or data migration.
 
-The default V2.0.4 earning policy is `BDT 50 = 1 point`, so each whole BDT
-produces exactly 200 point units. The rate is derived and validated from
-`src/config/app-config.ts`; it is not stored as a floating-point value. The
-redemption policy remains `4 points = BDT 1`, or 40,000 point units per reward
-BDT.
+V2.0.5 centralizes flat and whole-order bracketed earning policies in
+`src/config/app-config.ts`. The active bracketed policy may produce repeating
+fractional points; the Worker calculates their
+rational values with `BigInt` and rounds half-up once to the nearest point unit,
+which is four-decimal point precision. JavaScript floating point is not used as
+the business source of truth. The alternative flat policy remains `BDT 50 = 1
+point`. The redemption policy remains `4 points = BDT 1`, or 40,000 point units
+per reward BDT.
 
-V2.0.4 makes no schema or data change. Existing balances, detailed
+V2.0.5 makes no schema or data change. Existing balances, detailed
 transactions, mutation receipts, reward snapshots, and leaderboard aggregates
-remain exactly as stored. The new earning policy applies only to later
+remain exactly as stored. A changed earning mode applies only to later confirmed
 purchases. A week or month spanning a deployment may therefore contain gross
-purchase earnings calculated under both the old and new earning policies.
+purchase earnings calculated under different earning policies.
+
+Purchase amounts remain positive whole-number BDT values in the existing
+`purchase_amount_bdt` integer column; decimals are rejected before mutation.
+No poisha column, schema migration, or historical recalculation is needed.
 
 Two-decimal point formatting is a Telegram presentation rule only. It is
 calculated from integer point units with half-up rounding and is never stored

@@ -131,8 +131,8 @@ const parsePayload = (json: string): StatePayload => {
   if (row.earningPolicyId !== undefined) {
     if (
       typeof row.earningPolicyId !== "string"
-      || !/^earning:\d+:\d+:\d+$/.test(row.earningPolicyId)
-      || row.earningPolicyId.length > 80
+      || !/^earning:[A-Za-z0-9:._,|*-]+$/.test(row.earningPolicyId)
+      || row.earningPolicyId.length > 500
     ) {
       throw new Error("Invalid conversation state.");
     }

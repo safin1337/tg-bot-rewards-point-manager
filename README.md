@@ -33,14 +33,18 @@ brand: {
 
 rewards: {
   earning: {
-    spendBdt: 100,
-    earnPoints: 1
+    mode: "flat",
+    flat: {
+      policyId: "flat-100-v1",
+      spendBdt: 100,
+      earnPoints: 1
+    }
   }
 }
 ```
 For a new installation, follow the complete
 [Fresh Installation Guide](docs/Fresh-Installation.md). It is the authoritative
-setup runbook
+setup runbook.
 
 Runtime headings, escaped taglines, purchase calculations, help text, and the
 CSV filename prefix derive from these settings. Configure the redemption rate
@@ -84,15 +88,28 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 ## Loyalty rules
 
 - `1 point = 10,000 point units`.
-- The default earning policy is `BDT 50 spent = 1 point`.
-- `BDT 1 spent = 200 point units` under the default policy.
-- A purchase earns `purchase BDT × 200` point units under the default policy.
+- V2.0.5 centralizes both `flat` and `bracketed` earning modes in `APP_CONFIG`.
+- V2.0.5 ships with `bracketed` mode active. It applies one rate to the complete
+  purchase: BDT
+  1-2,000 at 50:1, 2,001-4,000 at 60:1, 4,001-6,000 at 70:1, 6,001-25,000 at
+  80:1, and 25,001+ at 100:1. It is not progressive.
+- The alternative `flat` mode applies `BDT 50 spent = 1 point` to every positive
+  whole-BDT purchase.
+- Bracketed `pointFloorProtection` is independently configurable. When enabled,
+  it prevents a larger purchase from earning fewer points at a boundary; when
+  disabled, the raw whole-order bracket rate applies.
 - `1 point = BDT 0.25` reward value.
 - The redemption policy remains `4 points = BDT 1`.
 - Rounded reward BDT is `floor((point units + 20,000) / 40,000)`.
-- Branding and both reward ratios are validated from `APP_CONFIG`; configured
-  ratios must produce an exact supported integer point-unit conversion.
+- Branding and both reward policies are validated from `APP_CONFIG` using
+  integer arithmetic, ordered boundaries, safe ranges, and one final unbounded
+  bracket.
 - Point balances and transaction deltas use integers only. JavaScript floating point is never the source of truth.
+- Purchase input remains positive whole-number BDT only. Decimal purchase input
+  is rejected in both earning modes.
+- Earned purchase points are rounded half-up once to four decimal places before
+  their integer point units are stored. The separate Telegram display rule
+  still rounds to two decimals.
 - Manual additions and redemptions accept up to four decimal places.
 - The redemption amount prompt also offers `Redeem All Points`. It selects the
   customer's exact stored integer balance, then shows the normal confirmation
@@ -115,7 +132,7 @@ underlying point units, calculations, parsing, leaderboard ranking, and CSV
 exports retain their exact precision.
 
 Existing balances, transactions, mutation receipts, history, and leaderboard
-totals remain exactly as stored when the earning rate changes. The new rate
+totals remain exactly as stored when the earning mode or rate changes. The new policy
 applies only to purchases confirmed after the new Worker is deployed. A
 leaderboard week or month spanning deployment can therefore contain purchases
 calculated under both earning policies. Confirmations prepared under an older
@@ -179,7 +196,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.4 release runbook](docs/V2.0.4-RELEASE.md).
+[V2.0.5 release guide](docs/V2.0.5-RELEASE.md).
 
 ## Security summary
 

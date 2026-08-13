@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { extractCommand } from "../src/workflows/command-handler";
 import {
+  backCancelKeyboard,
+  confirmKeyboard,
   dashboardKeyboard,
   redeemAmountKeyboard,
   selectionKeyboard
@@ -61,7 +63,9 @@ describe("Telegram callback size and dashboard actions", () => {
     const callbacks = [
       ...dashboardKeyboard().inline_keyboard.flat(),
       ...selectionKeyboard("abcdefghij").inline_keyboard.flat(),
-      ...redeemAmountKeyboard("abcdefghijklmnop").inline_keyboard.flat()
+      ...redeemAmountKeyboard("abcdefghijklmnop").inline_keyboard.flat(),
+      ...backCancelKeyboard("abcdefghijklmnop", "s").inline_keyboard.flat(),
+      ...confirmKeyboard("abcdefghijklmnop", "✅ Confirm", "a").inline_keyboard.flat()
     ].map((button) => button.callback_data);
     for (const callback of callbacks) {
       expect(new TextEncoder().encode(callback).byteLength).toBeLessThanOrEqual(64);
@@ -73,6 +77,13 @@ describe("Telegram callback size and dashboard actions", () => {
       text: "💯 Redeem All Points",
       callback_data: "redeemall:abcdefghij"
     });
+  });
+
+  it("offers tokenized Back alongside Cancel below the first operation level", () => {
+    expect(backCancelKeyboard("abcdefghij", "s").inline_keyboard.flat()).toEqual([
+      { text: "⬅️ Back", callback_data: "back:s:abcdefghij" },
+      { text: "❌ Cancel", callback_data: "cancel" }
+    ]);
   });
 
   it.each([

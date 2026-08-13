@@ -2,6 +2,7 @@ import { formatPointUnitsForDisplay } from "../domain/points";
 import { roundRewardBdt, safeBalanceAfter } from "../domain/rewards";
 import type { ConversationState, Customer, Operation } from "../types/models";
 import {
+  backCancelKeyboard,
   cancelKeyboard,
   exportKeyboard,
   historyKeyboard,
@@ -116,7 +117,13 @@ export const promptAfterSelection = async (
       selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
-    await display(context, chatId, `${base}\n\nEnter the purchase amount in BDT.`, cancelKeyboard(), target);
+    await display(
+      context,
+      chatId,
+      `${base}\n\nEnter the purchase amount in BDT.`,
+      backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search"),
+      target
+    );
     return;
   }
   if (state.activeOperation === "MANUAL_ADD") {
@@ -131,7 +138,7 @@ export const promptAfterSelection = async (
       context,
       chatId,
       `${base}\n\nEnter the number of points you want to add.`,
-      cancelKeyboard(),
+      backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search"),
       target
     );
     return;

@@ -80,6 +80,15 @@ the generated heading remains `SoulShop Rewards Point System`.
 ## Editing rules
 
 - A new slash command sends a new active panel.
+- The first operation panel uses `Cancel` to clear the operation and return to
+  the dashboard. Screens below that level also show `Back`.
+- `Back` preserves the active operation and returns one logical step: customer
+  input/results return to Search Options, transaction confirmation returns to
+  amount or note entry, and customer-creation confirmation returns to number
+  entry.
+- Every Back transition clears data collected after its destination and rotates
+  the state token. Buttons from the abandoned screen are therefore stale and
+  cannot confirm a transaction or create a customer.
 - A button-only transition normally edits the bot message containing the
   pressed button.
 - Add-customer, purchase, manual-add, redemption, and leaderboard-reset

@@ -4,6 +4,7 @@ import { leaderboardPeriods } from "../domain/leaderboard";
 import { EARNING_POLICY_ID } from "../domain/rewards";
 import { newStateToken } from "../database/state-repository";
 import {
+  backCancelKeyboard,
   cancelKeyboard,
   customerActionsKeyboard,
   dashboardKeyboard,
@@ -12,6 +13,8 @@ import {
   leaderboardPeriodsKeyboard,
   leaderboardResetKeyboard,
   leaderboardResultKeyboard,
+  selectionKeyboard,
+  skipNoteKeyboard
 } from "../telegram/keyboards";
 import {
   BRAND,
@@ -24,7 +27,8 @@ import {
   leaderboardResetSuccessMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
-  redemptionSuccessMessage
+  redemptionSuccessMessage,
+  selectionMessage
 } from "../telegram/messages";
 import type { ConversationState, LeaderboardPeriodType } from "../types/models";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
@@ -406,10 +410,165 @@ export const handleCallback = async (
     return;
   }
 
+  match = /^back:([sfanu]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const destination = match[1];
+    const state = await stateForToken(context, adminId, target, match[2]);
+    if (state === null) return;
+    const nextToken = newStateToken();
+
+    if (destination === "s") {
+      const allowedSteps = [
+        "AWAIT_SEARCH",
+        "AWAIT_FULL_NUMBER",
+        "SHOW_RESULTS",
+        "SHOW_HISTORY",
+        "AWAIT_PURCHASE_AMOUNT",
+        "AWAIT_POINT_AMOUNT"
+      ];
+      if (
+        !allowedSteps.includes(state.currentStep)
+        || state.activeOperation === "ADD_CUSTOMER"
+        || state.activeOperation === "EXPORT"
+        || state.activeOperation === "LEADERBOARD"
+      ) {
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "SELECT_MODE",
+        selectionMode: null,
+        selectedCustomerId: null,
+        selectedWhatsappNumber: null,
+        searchDigits: null,
+        searchPage: 0,
+        payload: { token: nextToken }
+      });
+      await display(
+        context,
+        target,
+        selectionMessage(state.activeOperation),
+        selectionKeyboard(saved.payload.token)
+      );
+      return;
+    }
+
+    if (destination === "f") {
+      if (
+        state.currentStep !== "CONFIRM_CREATE_FOR_OPERATION"
+        || (state.activeOperation !== "PURCHASE" && state.activeOperation !== "MANUAL_ADD")
+      ) {
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "AWAIT_FULL_NUMBER",
+        selectionMode: "FULL_NUMBER",
+        selectedCustomerId: null,
+        selectedWhatsappNumber: null,
+        searchDigits: null,
+        searchPage: 0,
+        payload: { token: nextToken }
+      });
+      await display(
+        context,
+        target,
+        "Enter the customer's complete WhatsApp number.\nSpaces and hyphens are accepted.",
+        backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
+      );
+      return;
+    }
+
+    if (destination === "u") {
+      if (state.activeOperation !== "ADD_CUSTOMER" || state.currentStep !== "CONFIRM_ADD_CUSTOMER") {
+        await stale(context, target);
+        return;
+      }
+      await context.states.save({
+        ...state,
+        currentStep: "AWAIT_ADD_CUSTOMER_NUMBER",
+        selectionMode: null,
+        selectedCustomerId: null,
+        selectedWhatsappNumber: null,
+        searchDigits: null,
+        searchPage: 0,
+        payload: { token: nextToken }
+      });
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nEnter the customer's WhatsApp number.\nSpaces and hyphens are accepted.`,
+        cancelKeyboard()
+      );
+      return;
+    }
+
+    if (destination === "n") {
+      if (
+        state.activeOperation !== "MANUAL_ADD"
+        || state.currentStep !== "CONFIRM_MANUAL_ADD"
+        || state.selectedCustomerId === null
+        || state.payload.pointUnits === undefined
+        || state.payload.expectedBalanceUnits === undefined
+      ) {
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "AWAIT_NOTE",
+        payload: {
+          token: nextToken,
+          pointUnits: state.payload.pointUnits,
+          expectedBalanceUnits: state.payload.expectedBalanceUnits
+        }
+      });
+      await display(
+        context,
+        target,
+        `${BRAND}\n\nEnter an optional note (maximum 500 characters), or tap Skip Note.`,
+        skipNoteKeyboard(saved.payload.token)
+      );
+      return;
+    }
+
+    const amountStepMatches =
+      (state.activeOperation === "PURCHASE" && state.currentStep === "CONFIRM_PURCHASE")
+      || (state.activeOperation === "REDEEM" && state.currentStep === "CONFIRM_REDEEM")
+      || (state.activeOperation === "MANUAL_ADD" && state.currentStep === "AWAIT_NOTE");
+    if (!amountStepMatches || state.selectedCustomerId === null) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null) {
+      await stale(context, target);
+      return;
+    }
+    await promptAfterSelection(
+      context,
+      { ...state, payload: { token: nextToken } },
+      customer,
+      chatId,
+      target
+    );
+    return;
+  }
+
   match = /^mode:([sf]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[2]);
-    if (state === null || !["SELECT_MODE", "SHOW_RESULTS", "AWAIT_FULL_NUMBER"].includes(state.currentStep)) return;
+    if (
+      state === null
+      || ![
+        "SELECT_MODE",
+        "SHOW_RESULTS",
+        "AWAIT_FULL_NUMBER",
+        "CONFIRM_CREATE_FOR_OPERATION"
+      ].includes(state.currentStep)
+    ) return;
     if (
       state.activeOperation === "ADD_CUSTOMER"
       || state.activeOperation === "EXPORT"
@@ -419,14 +578,15 @@ export const handleCallback = async (
       return;
     }
     const suffix = match[1] === "s";
-    await context.states.save({
+    const saved = await context.states.save({
       ...state,
       currentStep: suffix ? "AWAIT_SEARCH" : "AWAIT_FULL_NUMBER",
       selectionMode: suffix ? "SUFFIX" : "FULL_NUMBER",
       selectedCustomerId: null,
       selectedWhatsappNumber: null,
       searchDigits: null,
-      searchPage: 0
+      searchPage: 0,
+      payload: { token: newStateToken() }
     });
     await display(
       context,
@@ -434,7 +594,7 @@ export const handleCallback = async (
       suffix
         ? "Enter the last 4 or 5 digits of the customer's WhatsApp number."
         : "Enter the customer's complete WhatsApp number.\nSpaces and hyphens are accepted.",
-      cancelKeyboard()
+      backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
     );
     return;
   }
@@ -448,7 +608,7 @@ export const handleCallback = async (
       || state.activeOperation === "EXPORT"
       || state.activeOperation === "LEADERBOARD"
     ) return;
-    await context.states.save({
+    const saved = await context.states.save({
       ...state,
       currentStep: "AWAIT_SEARCH",
       selectionMode: "SUFFIX",
@@ -462,7 +622,7 @@ export const handleCallback = async (
       context,
       target,
       "Enter the last 4 or 5 digits of the customer's WhatsApp number.",
-      cancelKeyboard()
+      backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
     );
     return;
   }
@@ -568,7 +728,7 @@ export const handleCallback = async (
       context,
       target,
       pointConfirmation(customer, "MANUAL_ADD", state.payload.pointUnits, null),
-      confirmKeyboard(saved.payload.token, "✅ Confirm Point Addition")
+      confirmKeyboard(saved.payload.token, "✅ Confirm Point Addition", "n")
     );
     return;
   }
@@ -595,7 +755,7 @@ export const handleCallback = async (
         context,
         target,
         `${BRAND}\n\n⚠️ This customer has no points available to redeem.`,
-        cancelKeyboard()
+        backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search")
       );
       return;
     }
@@ -612,7 +772,7 @@ export const handleCallback = async (
       context,
       target,
       pointConfirmation(customer, "REDEEM", customer.pointBalanceUnits, null),
-      confirmKeyboard(saved.payload.token, "✅ Confirm Redemption")
+      confirmKeyboard(saved.payload.token, "✅ Confirm Redemption", "a")
     );
     return;
   }

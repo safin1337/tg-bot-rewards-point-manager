@@ -103,6 +103,10 @@ These rules are mandatory for every future coding agent working in this reposito
 - Expired or stale state must never confirm a transaction.
 - Persist the active operation's starting Telegram update ID and reject older delayed messages or callbacks so they cannot continue or replace a newer operation.
 - `/restart` preserves the operation but clears collected values. `/cancel` clears state.
+- Preserve tokenized `Back` navigation below the first operation panel. Back
+  keeps the active operation, clears fields collected after the destination,
+  rotates the state token, and never bypasses confirmation or performs a data
+  mutation. Cancel remains the dashboard exit.
 - Answer every callback promptly, including unauthorized callbacks.
 - Button-only transitions, confirmation results, search/history pagination, and leaderboard navigation normally edit the callback's bot message. Treat `message is not modified` as success and use one send-message fallback when editing is unavailable.
 - Complete a database mutation before displaying success. An edit failure after commit must never repeat or misreport the mutation; keep enough temporary state for an idempotent retry until the success display is delivered.

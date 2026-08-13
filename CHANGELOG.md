@@ -2,6 +2,20 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [Unreleased]
+
+### Back navigation
+
+- Added a tokenized `Back` action below the first operation level while keeping
+  `Cancel` as the operation exit to the dashboard.
+- Customer-number prompts and results return to Search Options; amount and note
+  confirmations return to their preceding input step; customer creation
+  confirmation returns to number entry.
+- Back transitions preserve the active operation, clear values collected after
+  the destination, rotate the state token, and make prior Confirm/Search/Back
+  buttons stale without creating a customer or reward mutation.
+- Updated the project-local Wrangler development dependency to 4.123.0.
+
 ## [2.0.5] - 2026-08-13
 
 ### Centralized earning modes

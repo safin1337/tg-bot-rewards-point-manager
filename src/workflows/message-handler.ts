@@ -4,6 +4,7 @@ import { formatPointUnitsForDisplay, parsePointUnits, parsePurchaseAmount } from
 import { EARNING_POLICY_ID, purchaseToPointUnits, safeBalanceAfter } from "../domain/rewards";
 import {
   addCustomerConfirmKeyboard,
+  backCancelKeyboard,
   cancelKeyboard,
   createForOperationKeyboard,
   confirmKeyboard,
@@ -35,7 +36,7 @@ const handleFullPhone = async (
   } catch (error: unknown) {
     if (!(error instanceof DomainError)) throw error;
     await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-      replyMarkup: cancelKeyboard()
+      replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Search Options")
     });
     return;
   }
@@ -122,7 +123,7 @@ export const handleStateMessage = async (
     } catch (error: unknown) {
       if (!(error instanceof DomainError)) throw error;
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-        replyMarkup: cancelKeyboard()
+        replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Search Options")
       });
       return;
     }
@@ -157,7 +158,7 @@ export const handleStateMessage = async (
     } catch (error: unknown) {
       if (!(error instanceof DomainError)) throw error;
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-        replyMarkup: cancelKeyboard()
+        replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search")
       });
       return;
     }
@@ -176,7 +177,7 @@ export const handleStateMessage = async (
       }
     });
     await context.telegram.sendMessage(chatId, purchaseConfirmation(customer, amount, units), {
-      replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Purchase")
+      replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Purchase", "a")
     });
     return;
   }
@@ -189,7 +190,7 @@ export const handleStateMessage = async (
     } catch (error: unknown) {
       if (!(error instanceof DomainError)) throw error;
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-        replyMarkup: cancelKeyboard()
+        replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search")
       });
       return;
     }
@@ -203,7 +204,13 @@ export const handleStateMessage = async (
         await context.telegram.sendMessage(
           chatId,
           `${BRAND}\n\n⚠️ Insufficient point balance.\n\nAvailable: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points`,
-          { replyMarkup: cancelKeyboard() }
+          {
+            replyMarkup: backCancelKeyboard(
+              state.payload.token,
+              "s",
+              "⬅️ Back to Customer Search"
+            )
+          }
         );
         return;
       }
@@ -217,7 +224,7 @@ export const handleStateMessage = async (
         }
       });
       await context.telegram.sendMessage(chatId, pointConfirmation(customer, "REDEEM", units, null), {
-        replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Redemption")
+        replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Redemption", "a")
       });
       return;
     }
@@ -262,7 +269,7 @@ export const handleStateMessage = async (
     await context.telegram.sendMessage(
       chatId,
       pointConfirmation(customer, "MANUAL_ADD", state.payload.pointUnits, note),
-      { replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Point Addition") }
+      { replyMarkup: confirmKeyboard(saved.payload.token, "✅ Confirm Point Addition", "n") }
     );
     return;
   }

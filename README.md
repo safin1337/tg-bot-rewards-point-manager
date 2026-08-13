@@ -175,6 +175,10 @@ Inline-button navigation uses one active bot message where chronological order
 allows it. Confirmation panels become success results after commit, while
 responses following typed input are sent below that input. Telegram edit
 failures use one safe send-message fallback without repeating database work.
+The first screen inside an operation keeps `Cancel` as the dashboard exit.
+Deeper customer-search, amount, note, and confirmation screens also provide a
+tokenized `Back` action that returns one logical step, clears later collected
+values, and invalidates buttons from the abandoned screen.
 See [the active-message workflow contract](docs/TELEGRAM-WORKFLOWS.md).
 
 ## Installation and deployment

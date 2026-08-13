@@ -338,9 +338,177 @@ describe("stateful customer search and purchase", () => {
       String(call.payload?.text).startsWith("✅ Taking entry for +8801712344567")
     )).toBe(true);
   });
+
+  it.each([
+    ["s", "AWAIT_SEARCH"],
+    ["f", "AWAIT_FULL_NUMBER"]
+  ] as const)("returns from %s customer input to Search Options with a fresh token", async (mode, step) => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(120, 123456789, "/purchase"));
+    const initial = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(121, 123456789, `mode:${mode}:${initial?.payload.token ?? ""}`, 800)
+    );
+    const input = (await context.states.get("123456789")).state;
+    expect(input?.currentStep).toBe(step);
+
+    calls.length = 0;
+    await processTelegramUpdate(
+      context,
+      callback(122, 123456789, `back:s:${input?.payload.token ?? ""}`, 800)
+    );
+    const returned = (await context.states.get("123456789")).state;
+    expect(returned).toMatchObject({
+      activeOperation: "PURCHASE",
+      currentStep: "SELECT_MODE",
+      selectionMode: null,
+      selectedCustomerId: null,
+      selectedWhatsappNumber: null,
+      searchDigits: null,
+      searchPage: 0
+    });
+    expect(returned?.payload.token).not.toBe(input?.payload.token);
+    expect(calls[0]?.method).toBe("answerCallbackQuery");
+    expect(calls[1]).toMatchObject({
+      method: "editMessageText",
+      payload: { message_id: 800 }
+    });
+    expect(String(calls[1]?.payload?.text)).toContain("Select a customer:");
+
+    await processTelegramUpdate(
+      context,
+      callback(123, 123456789, `back:s:${input?.payload.token ?? ""}`, 800)
+    );
+    expect((await context.states.get("123456789")).state?.payload.token).toBe(returned?.payload.token);
+    expect(calls.some((call) => String(call.payload?.text).includes("button is stale"))).toBe(true);
+  });
+
+  it("returns from search results and clears the completed suffix search", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await context.customers.createZeroBalance(normalizePhone("01712345678"), 130, new Date().toISOString());
+    await processTelegramUpdate(context, message(131, 123456789, "/balance"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(context, callback(132, 123456789, `mode:s:${state?.payload.token ?? ""}`));
+    await processTelegramUpdate(context, message(133, 123456789, "5678"));
+    state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({ currentStep: "SHOW_RESULTS", searchDigits: "5678" });
+
+    await processTelegramUpdate(
+      context,
+      callback(134, 123456789, `back:s:${state?.payload.token ?? ""}`, 801)
+    );
+    expect((await context.states.get("123456789")).state).toMatchObject({
+      activeOperation: "BALANCE",
+      currentStep: "SELECT_MODE",
+      searchDigits: null,
+      searchPage: 0
+    });
+  });
+
+  it("backs out of purchase confirmation without mutating and invalidates the old Confirm button", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      140,
+      new Date().toISOString()
+    );
+    await processTelegramUpdate(context, message(141, 123456789, "/purchase"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(context, callback(142, 123456789, `mode:f:${state?.payload.token ?? ""}`));
+    await processTelegramUpdate(context, message(143, 123456789, "01712345678"));
+    await processTelegramUpdate(context, message(144, 123456789, "500"));
+    state = (await context.states.get("123456789")).state;
+    const confirmationToken = state?.payload.token ?? "";
+    expect(state?.currentStep).toBe("CONFIRM_PURCHASE");
+
+    await processTelegramUpdate(context, callback(145, 123456789, `back:a:${confirmationToken}`, 802));
+    const amount = (await context.states.get("123456789")).state;
+    expect(amount).toMatchObject({
+      activeOperation: "PURCHASE",
+      currentStep: "AWAIT_PURCHASE_AMOUNT",
+      selectedCustomerId: created.customer.id
+    });
+    expect(amount?.payload).toEqual({ token: amount?.payload.token });
+    expect(amount?.payload.token).not.toBe(confirmationToken);
+
+    await processTelegramUpdate(context, callback(146, 123456789, `confirm:${confirmationToken}`, 802));
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(0);
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions).toHaveLength(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM mutation_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+  });
+
+  it("backs from manual-add confirmation to note and then to point amount", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      150,
+      new Date().toISOString()
+    );
+    await processTelegramUpdate(context, message(151, 123456789, "/addpoints"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(context, callback(152, 123456789, `mode:f:${state?.payload.token ?? ""}`));
+    await processTelegramUpdate(context, message(153, 123456789, "01712345678"));
+    await processTelegramUpdate(context, message(154, 123456789, "1.25"));
+    await processTelegramUpdate(context, message(155, 123456789, "campaign"));
+    state = (await context.states.get("123456789")).state;
+    const confirmationToken = state?.payload.token ?? "";
+
+    await processTelegramUpdate(context, callback(156, 123456789, `back:n:${confirmationToken}`, 803));
+    const note = (await context.states.get("123456789")).state;
+    expect(note).toMatchObject({
+      currentStep: "AWAIT_NOTE",
+      selectedCustomerId: created.customer.id,
+      payload: { pointUnits: 12_500, expectedBalanceUnits: 0 }
+    });
+    expect(note?.payload.note).toBeUndefined();
+    expect(note?.payload.token).not.toBe(confirmationToken);
+
+    await processTelegramUpdate(
+      context,
+      callback(157, 123456789, `back:a:${note?.payload.token ?? ""}`, 803)
+    );
+    const amount = (await context.states.get("123456789")).state;
+    expect(amount).toMatchObject({
+      currentStep: "AWAIT_POINT_AMOUNT",
+      selectedCustomerId: created.customer.id
+    });
+    expect(amount?.payload).toEqual({ token: amount?.payload.token });
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(0);
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions).toHaveLength(0);
+  });
 });
 
 describe("remaining end-to-end workflows", () => {
+  it("backs out of customer creation without creating a customer", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(26, 123456789, "/purchase"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(context, callback(27, 123456789, `mode:f:${state?.payload.token ?? ""}`));
+    await processTelegramUpdate(context, message(28, 123456789, "01712345678"));
+    state = (await context.states.get("123456789")).state;
+    const createToken = state?.payload.token ?? "";
+    expect(state?.currentStep).toBe("CONFIRM_CREATE_FOR_OPERATION");
+
+    await processTelegramUpdate(context, callback(29, 123456789, `back:f:${createToken}`, 804));
+    const returned = (await context.states.get("123456789")).state;
+    expect(returned).toMatchObject({
+      activeOperation: "PURCHASE",
+      currentStep: "AWAIT_FULL_NUMBER",
+      selectionMode: "FULL_NUMBER",
+      selectedCustomerId: null,
+      selectedWhatsappNumber: null
+    });
+    expect(returned?.payload).toEqual({ token: returned?.payload.token });
+    expect(returned?.payload.token).not.toBe(createToken);
+
+    await processTelegramUpdate(context, callback(30, 123456789, `create:${createToken}`, 804));
+    expect(await context.customers.findByPhone("+8801712345678")).toBeNull();
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM mutation_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+  });
+
   it("registers a new customer at zero without creating reward history", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     await processTelegramUpdate(context, message(30, 123456789, "/addcustomer"));
@@ -454,6 +622,9 @@ describe("remaining end-to-end workflows", () => {
       inline_keyboard: [[{
         text: "💯 Redeem All Points",
         callback_data: `redeemall:${state?.payload.token ?? ""}`
+      }], [{
+        text: "⬅️ Back to Customer Search",
+        callback_data: `back:s:${state?.payload.token ?? ""}`
       }], [{ text: "❌ Cancel", callback_data: "cancel" }]]
     });
 

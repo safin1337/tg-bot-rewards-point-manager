@@ -28,9 +28,29 @@ export const cancelKeyboard = (): InlineKeyboardMarkup => ({
   inline_keyboard: [[{ text: "❌ Cancel", callback_data: "cancel" }]]
 });
 
+export type BackDestination = "s" | "f" | "a" | "n" | "u";
+
+const backButton = (
+  token: string,
+  destination: BackDestination,
+  text = "⬅️ Back"
+) => ({ text, callback_data: `back:${destination}:${token}` });
+
+export const backCancelKeyboard = (
+  token: string,
+  destination: BackDestination,
+  backText = "⬅️ Back"
+): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [backButton(token, destination, backText)],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
 export const redeemAmountKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "💯 Redeem All Points", callback_data: `redeemall:${token}` }],
+    [backButton(token, "s", "⬅️ Back to Customer Search")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -58,6 +78,7 @@ export const resultsKeyboard = (
   if (pagination.length > 0) rows.push(pagination);
   rows.push([{ text: "🔄 Search Again", callback_data: `again:${token}` }]);
   rows.push([{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }]);
+  rows.push([backButton(token, "s", "⬅️ Back to Search Options")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
 };
@@ -66,13 +87,19 @@ export const noResultsKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
     [{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }],
+    [backButton(token, "s", "⬅️ Back to Search Options")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
 
-export const confirmKeyboard = (token: string, confirmText: string): InlineKeyboardMarkup => ({
+export const confirmKeyboard = (
+  token: string,
+  confirmText: string,
+  backDestination: "a" | "n"
+): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: confirmText, callback_data: `confirm:${token}` }],
+    [backButton(token, backDestination)],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -80,7 +107,7 @@ export const confirmKeyboard = (token: string, confirmText: string): InlineKeybo
 export const createForOperationKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "✅ Create and Continue", callback_data: `create:${token}` }],
-    [{ text: "⌨️ Enter Another Number", callback_data: `mode:f:${token}` }],
+    [backButton(token, "f")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -88,7 +115,7 @@ export const createForOperationKeyboard = (token: string): InlineKeyboardMarkup 
 export const addCustomerConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "✅ Confirm Customer", callback_data: `confirm:${token}` }],
-    [{ text: "⌨️ Enter Another Number", callback_data: `another:${token}` }],
+    [backButton(token, "u")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -96,6 +123,7 @@ export const addCustomerConfirmKeyboard = (token: string): InlineKeyboardMarkup 
 export const skipNoteKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "⏭️ Skip Note", callback_data: `skip:${token}` }],
+    [backButton(token, "a", "⬅️ Back to Point Amount")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -111,6 +139,7 @@ export const historyKeyboard = (
   const rows = navigation.length > 0 ? [navigation] : [];
   rows.push([{ text: "🔄 Search Again", callback_data: `again:${token}` }]);
   rows.push([{ text: "👤 Customer Actions", callback_data: `actions:${token}` }]);
+  rows.push([backButton(token, "s", "⬅️ Back to Search Options")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
 };
@@ -142,6 +171,7 @@ export const missingCustomerKeyboard = (token: string): InlineKeyboardMarkup => 
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
     [{ text: "⌨️ Enter Another Number", callback_data: `mode:f:${token}` }],
+    [backButton(token, "s", "⬅️ Back to Search Options")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });

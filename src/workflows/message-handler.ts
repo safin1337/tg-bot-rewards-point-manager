@@ -36,7 +36,7 @@ const handleFullPhone = async (
   } catch (error: unknown) {
     if (!(error instanceof DomainError)) throw error;
     await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-      replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Search Options")
+      replyMarkup: backCancelKeyboard(state.payload.token, "s")
     });
     return;
   }
@@ -123,7 +123,7 @@ export const handleStateMessage = async (
     } catch (error: unknown) {
       if (!(error instanceof DomainError)) throw error;
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
-        replyMarkup: backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Search Options")
+        replyMarkup: backCancelKeyboard(state.payload.token, "s")
       });
       return;
     }

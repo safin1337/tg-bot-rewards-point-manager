@@ -115,7 +115,7 @@ describe("administrator-only routing", () => {
 
 describe("stateful customer search and purchase", () => {
   it.each([
-    ["P", "PURCHASE", "🛒 <b>Record Purchase</b>"],
+    ["P", "PURCHASE", "🛍️ <b>Record Purchase</b>"],
     ["M", "MANUAL_ADD", "➕ <b>Add Points Manually</b>"],
     ["R", "REDEEM", "🎁 <b>Redeem Points</b>"],
     ["B", "BALANCE", "💰 <b>Check Balance</b>"],
@@ -138,6 +138,47 @@ describe("stateful customer search and purchase", () => {
       });
     }
   );
+
+  it.each([
+    [
+      "s",
+      "Selected Operation: 🛍️ Record Purchase\n\n"
+      + "Enter the last 4 or 5 digits of the WhatsApp No.\n"
+      + "Telegram / WhatsApp Username are not accepted"
+    ],
+    [
+      "f",
+      "Selected Operation: 🛍️ Record Purchase\n\n"
+      + "Enter the full WhatsApp number.\n"
+      + "Spaces and hyphens are accepted."
+    ]
+  ] as const)("shows the selected operation on the %s phone prompt", async (mode, expectedText) => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(6, 123456789, "/purchase"));
+    const state = (await context.states.get("123456789")).state;
+    calls.length = 0;
+
+    await processTelegramUpdate(
+      context,
+      callback(7, 123456789, `mode:${mode}:${state?.payload.token ?? ""}`, 51)
+    );
+    const promptState = (await context.states.get("123456789")).state;
+
+    expect(calls[0]?.method).toBe("answerCallbackQuery");
+    expect(calls[1]).toMatchObject({
+      method: "editMessageText",
+      payload: {
+        message_id: 51,
+        text: expectedText,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "⬅️ Back", callback_data: `back:s:${promptState?.payload.token ?? ""}` }],
+            [{ text: "❌ Cancel", callback_data: "cancel" }]
+          ]
+        }
+      }
+    });
+  });
 
   it("executes a suffix-selected purchase and prevents old search selection", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);

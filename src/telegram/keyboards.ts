@@ -5,7 +5,7 @@ import type { InlineKeyboardMarkup } from "./types";
 export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [
-      { text: "🛒 Record Purchase", callback_data: "begin:P" },
+      { text: "🛍️ Record Purchase", callback_data: "begin:P" },
       { text: "➕ Add Points Manually", callback_data: "begin:M" }
     ],
     [
@@ -78,7 +78,7 @@ export const resultsKeyboard = (
   if (pagination.length > 0) rows.push(pagination);
   rows.push([{ text: "🔄 Search Again", callback_data: `again:${token}` }]);
   rows.push([{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }]);
-  rows.push([backButton(token, "s", "⬅️ Back to Search Options")]);
+  rows.push([backButton(token, "s")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
 };
@@ -87,7 +87,7 @@ export const noResultsKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
     [{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }],
-    [backButton(token, "s", "⬅️ Back to Search Options")],
+    [backButton(token, "s")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -139,7 +139,7 @@ export const historyKeyboard = (
   const rows = navigation.length > 0 ? [navigation] : [];
   rows.push([{ text: "🔄 Search Again", callback_data: `again:${token}` }]);
   rows.push([{ text: "👤 Customer Actions", callback_data: `actions:${token}` }]);
-  rows.push([backButton(token, "s", "⬅️ Back to Search Options")]);
+  rows.push([backButton(token, "s")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
 };
@@ -147,7 +147,7 @@ export const historyKeyboard = (
 export const customerActionsKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [
-      { text: "🛒 Record Purchase", callback_data: `act:P:${token}` },
+      { text: "🛍️ Record Purchase", callback_data: `act:P:${token}` },
       { text: "➕ Add Points Manually", callback_data: `act:M:${token}` }
     ],
     [
@@ -171,7 +171,7 @@ export const missingCustomerKeyboard = (token: string): InlineKeyboardMarkup => 
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
     [{ text: "⌨️ Enter Another Number", callback_data: `mode:f:${token}` }],
-    [backButton(token, "s", "⬅️ Back to Search Options")],
+    [backButton(token, "s")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });

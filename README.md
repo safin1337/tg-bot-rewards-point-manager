@@ -179,6 +179,10 @@ The first screen inside an operation keeps `Cancel` as the dashboard exit.
 Deeper customer-search, amount, note, and confirmation screens also provide a
 tokenized `Back` action that returns one logical step, clears later collected
 values, and invalidates buttons from the abandoned screen.
+Record Purchase uses the `🛍️` emoji. After `Search by Last Digits` or `Enter
+Full Number` is selected, the number-entry prompt repeats the active operation
+above its instructions. Customer-search navigation uses the compact
+`⬅️ Back` label.
 See [the active-message workflow contract](docs/TELEGRAM-WORKFLOWS.md).
 
 ## Installation and deployment

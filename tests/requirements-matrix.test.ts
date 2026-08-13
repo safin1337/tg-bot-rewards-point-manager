@@ -87,7 +87,7 @@ describe("Telegram callback size and dashboard actions", () => {
   });
 
   it.each([
-    "🛒 Record Purchase",
+    "🛍️ Record Purchase",
     "➕ Add Points Manually",
     "🎁 Redeem Points",
     "💰 Check Balance",

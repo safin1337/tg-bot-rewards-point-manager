@@ -2,20 +2,6 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
-## [Unreleased]
-
-### Back navigation
-
-- Added a tokenized `Back` action below the first operation level while keeping
-  `Cancel` as the operation exit to the dashboard.
-- Customer-number prompts and results return to Search Options; amount and note
-  confirmations return to their preceding input step; customer creation
-  confirmation returns to number entry.
-- Back transitions preserve the active operation, clear values collected after
-  the destination, rotate the state token, and make prior Confirm/Search/Back
-  buttons stale without creating a customer or reward mutation.
-- Updated the project-local Wrangler development dependency to 4.123.0.
-
 ## [2.0.5] - 2026-08-13
 
 ### Centralized earning modes
@@ -45,6 +31,30 @@ All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are docum
 - Existing balances, completed transactions, history, reward snapshots,
   leaderboard totals, mutation receipts, and redemption behavior are not
   recalculated or rewritten. No D1 migration or data backfill is required.
+
+### Customer-search context and copy
+
+- Added `Selected Operation: {emoji} {operation}` above both second-level
+  customer-number prompts so the active workflow remains visible after choosing
+  `Search by Last Digits` or `Enter Full Number`.
+- Changed the suffix prompt to `Enter the last 4 or 5 digits of the WhatsApp
+  No.` followed by `Telegram / WhatsApp Username are not accepted`.
+- Changed the full-number prompt to `Enter the full WhatsApp number.` followed
+  by `Spaces and hyphens are accepted.`.
+- Replaced the Record Purchase cart emoji with `🛍️` across the dashboard,
+  operation headings, customer actions, and current documentation.
+
+### Back navigation
+
+- Added a tokenized `Back` action below the first operation level while keeping
+  `Cancel` as the operation exit to the dashboard.
+- Customer-number prompts and results use the compact `⬅️ Back` label and
+  return to Search Options; amount and note confirmations return to their
+  preceding input step; customer creation confirmation returns to number entry.
+- Back transitions preserve the active operation, clear values collected after
+  the destination, rotate the state token, and make prior Confirm/Search/Back
+  buttons stale without creating a customer or reward mutation.
+- Updated the project-local Wrangler development dependency to 4.123.0.
 
 ### Documentation and validation
 

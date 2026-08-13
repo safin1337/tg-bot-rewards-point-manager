@@ -5,14 +5,18 @@ import { dhakaDate, formatDhakaDateTime } from "../src/utils/time";
 import {
   addCustomerSuccessMessage,
   balanceMessage,
+  fullNumberSearchPrompt,
   historyMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage,
-  selectionMessage
+  selectionMessage,
+  suffixSearchPrompt
 } from "../src/telegram/messages";
 import {
+  customerActionsKeyboard,
   historyKeyboard,
+  missingCustomerKeyboard,
   noResultsKeyboard,
   resultsKeyboard
 } from "../src/telegram/keyboards";
@@ -88,7 +92,7 @@ describe("time formatting", () => {
 
 describe("required branded messages", () => {
   it.each([
-    ["PURCHASE", "🛒 <b>Record Purchase</b>"],
+    ["PURCHASE", "🛍️ <b>Record Purchase</b>"],
     ["MANUAL_ADD", "➕ <b>Add Points Manually</b>"],
     ["REDEEM", "🎁 <b>Redeem Points</b>"],
     ["BALANCE", "💰 <b>Check Balance</b>"],
@@ -96,6 +100,25 @@ describe("required branded messages", () => {
   ] as const)("identifies the %s operation on its customer-selection panel", (operation, heading) => {
     expect(selectionMessage(operation)).toBe(
       `🏆 <b>SoulShop Rewards Point System</b>\n\n${heading}\n\nSelect a customer:`
+    );
+  });
+
+  it.each([
+    ["PURCHASE", "🛍️ Record Purchase"],
+    ["MANUAL_ADD", "➕ Add Points Manually"],
+    ["REDEEM", "🎁 Redeem Points"],
+    ["BALANCE", "💰 Check Balance"],
+    ["HISTORY", "📜 Customer History"]
+  ] as const)("identifies the selected %s operation on both phone prompts", (operation, label) => {
+    expect(suffixSearchPrompt(operation)).toBe(
+      `Selected Operation: ${label}\n\n`
+      + "Enter the last 4 or 5 digits of the WhatsApp No.\n"
+      + "Telegram / WhatsApp Username are not accepted"
+    );
+    expect(fullNumberSearchPrompt(operation)).toBe(
+      `Selected Operation: ${label}\n\n`
+      + "Enter the full WhatsApp number.\n"
+      + "Spaces and hyphens are accepted."
     );
   });
 
@@ -182,6 +205,24 @@ describe("search and history keyboards", () => {
   it("shows Search Again after no matches", () => {
     expect(noResultsKeyboard("abcdef").inline_keyboard.flat().map((button) => button.text))
       .toContain("🔄 Search Again");
+  });
+
+  it("uses the compact Back label on customer-search navigation", () => {
+    const labels = [
+      ...resultsKeyboard([customer], "abcdef", 0, false).inline_keyboard.flat(),
+      ...noResultsKeyboard("abcdef").inline_keyboard.flat(),
+      ...historyKeyboard("abcdef", 0, false).inline_keyboard.flat(),
+      ...missingCustomerKeyboard("abcdef").inline_keyboard.flat()
+    ].map((button) => button.text);
+    expect(labels.filter((label) => label === "⬅️ Back")).toHaveLength(4);
+    expect(labels).not.toContain("⬅️ Back to Search Options");
+  });
+
+  it("uses the shopping-bags emoji for Record Purchase customer actions", () => {
+    expect(customerActionsKeyboard("abcdef").inline_keyboard.flat()).toContainEqual({
+      text: "🛍️ Record Purchase",
+      callback_data: "act:P:abcdef"
+    });
   });
 
   it("validates history pagination controls by construction", () => {

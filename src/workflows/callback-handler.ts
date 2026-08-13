@@ -20,6 +20,7 @@ import {
   BRAND,
   BRAND_NAME_HTML,
   addCustomerSuccessMessage,
+  fullNumberSearchPrompt,
   helpMessage,
   leaderboardMenuMessage,
   leaderboardMessage,
@@ -28,7 +29,8 @@ import {
   manualAddSuccessMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage,
-  selectionMessage
+  selectionMessage,
+  suffixSearchPrompt
 } from "../telegram/messages";
 import type { ConversationState, LeaderboardPeriodType } from "../types/models";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
@@ -475,8 +477,8 @@ export const handleCallback = async (
       await display(
         context,
         target,
-        "Enter the customer's complete WhatsApp number.\nSpaces and hyphens are accepted.",
-        backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
+        fullNumberSearchPrompt(state.activeOperation),
+        backCancelKeyboard(saved.payload.token, "s")
       );
       return;
     }
@@ -592,9 +594,9 @@ export const handleCallback = async (
       context,
       target,
       suffix
-        ? "Enter the last 4 or 5 digits of the customer's WhatsApp number."
-        : "Enter the customer's complete WhatsApp number.\nSpaces and hyphens are accepted.",
-      backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
+        ? suffixSearchPrompt(state.activeOperation)
+        : fullNumberSearchPrompt(state.activeOperation),
+      backCancelKeyboard(saved.payload.token, "s")
     );
     return;
   }
@@ -621,8 +623,8 @@ export const handleCallback = async (
     await display(
       context,
       target,
-      "Enter the last 4 or 5 digits of the customer's WhatsApp number.",
-      backCancelKeyboard(saved.payload.token, "s", "⬅️ Back to Search Options")
+      suffixSearchPrompt(state.activeOperation),
+      backCancelKeyboard(saved.payload.token, "s")
     );
     return;
   }

@@ -35,16 +35,41 @@ export const dashboardMessage = (): string =>
 
 type CustomerSelectionOperation = Exclude<Operation, "ADD_CUSTOMER" | "EXPORT" | "LEADERBOARD">;
 
-const CUSTOMER_SELECTION_HEADINGS = {
-  PURCHASE: "🛒 <b>Record Purchase</b>",
-  MANUAL_ADD: "➕ <b>Add Points Manually</b>",
-  REDEEM: "🎁 <b>Redeem Points</b>",
-  BALANCE: "💰 <b>Check Balance</b>",
-  HISTORY: "📜 <b>Customer History</b>"
-} satisfies Readonly<Record<CustomerSelectionOperation, string>>;
+const CUSTOMER_SELECTION_OPERATIONS = {
+  PURCHASE: { emoji: "🛍️", label: "Record Purchase" },
+  MANUAL_ADD: { emoji: "➕", label: "Add Points Manually" },
+  REDEEM: { emoji: "🎁", label: "Redeem Points" },
+  BALANCE: { emoji: "💰", label: "Check Balance" },
+  HISTORY: { emoji: "📜", label: "Customer History" }
+} satisfies Readonly<Record<CustomerSelectionOperation, { emoji: string; label: string }>>;
+
+const customerSelectionHeading = (operation: CustomerSelectionOperation): string => {
+  const details = CUSTOMER_SELECTION_OPERATIONS[operation];
+  return `${details.emoji} <b>${details.label}</b>`;
+};
 
 export const selectionMessage = (operation: CustomerSelectionOperation): string =>
-  `${BRAND}\n\n${CUSTOMER_SELECTION_HEADINGS[operation]}\n\nSelect a customer:`;
+  `${BRAND}\n\n${customerSelectionHeading(operation)}\n\nSelect a customer:`;
+
+const selectedOperationMessage = (
+  operation: CustomerSelectionOperation,
+  prompt: string
+): string => {
+  const details = CUSTOMER_SELECTION_OPERATIONS[operation];
+  return `Selected Operation: ${details.emoji} ${details.label}\n\n${prompt}`;
+};
+
+export const suffixSearchPrompt = (operation: CustomerSelectionOperation): string =>
+  selectedOperationMessage(
+    operation,
+    "Enter the last 4 or 5 digits of the WhatsApp No.\nTelegram / WhatsApp Username are not accepted"
+  );
+
+export const fullNumberSearchPrompt = (operation: CustomerSelectionOperation): string =>
+  selectedOperationMessage(
+    operation,
+    "Enter the full WhatsApp number.\nSpaces and hyphens are accepted."
+  );
 
 const gcd = (left: bigint, right: bigint): bigint => {
   let a = left;

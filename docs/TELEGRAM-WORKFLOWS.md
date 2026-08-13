@@ -14,6 +14,25 @@ the generated heading remains `SoulShop Rewards Point System`.
   Customer History selection panels show the active operation as a bold,
   emoji-prefixed heading between the configured application heading and
   `Select a customer:`.
+- Record Purchase uses the `🛍️` emoji on the dashboard, selection heading, and
+  customer-actions panel.
+- After `Search by Last Digits` or `Enter Full Number` is selected, the next
+  panel starts with `Selected Operation: {emoji} {operation}`, followed by one
+  blank line and the relevant number-entry prompt.
+- The suffix prompt is exactly:
+
+  ```text
+  Enter the last 4 or 5 digits of the WhatsApp No.
+  Telegram / WhatsApp Username are not accepted
+  ```
+
+- The full-number prompt is exactly:
+
+  ```text
+  Enter the full WhatsApp number.
+  Spaces and hyphens are accepted.
+  ```
+
 - The Add New Customer prompt is separate and remains unchanged.
 - Dashboard callbacks, matching slash commands, and `/restart` use the same
   operation-aware selection panel.
@@ -82,6 +101,8 @@ the generated heading remains `SoulShop Rewards Point System`.
 - A new slash command sends a new active panel.
 - The first operation panel uses `Cancel` to clear the operation and return to
   the dashboard. Screens below that level also show `Back`.
+- Customer-search prompts, results, no-match screens, history, and missing-
+  customer screens use the compact button label `⬅️ Back`.
 - `Back` preserves the active operation and returns one logical step: customer
   input/results return to Search Options, transaction confirmation returns to
   amount or note entry, and customer-creation confirmation returns to number

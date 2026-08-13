@@ -1,6 +1,6 @@
 # Fresh Installation Guide
 
-This is the authoritative, detailed setup guide for installing V2.0.4 in a new
+This is the authoritative, detailed setup guide for installing V2.0.5 in a new
 Cloudflare account and connecting a new Telegram bot. Start with the project
 overview and business rules in the [README](../README.md). For branding and
 reward-policy changes, also read [CUSTOMIZATION.md](CUSTOMIZATION.md).
@@ -63,18 +63,18 @@ git --version
 
 ## 2. Open and install
 
-For a fresh Git checkout, clone the repository, select the V2.0.4 release, and
+For a fresh Git checkout, clone the repository, select the V2.0.5 release, and
 install the exact dependencies recorded in `package-lock.json`:
 
 ```powershell
 git clone <YOUR_REPOSITORY_URL>
 Set-Location "<CLONED_PROJECT_DIRECTORY>"
-git checkout v2.0.4
+git checkout v2.0.5
 code .
 npm.cmd ci
 ```
 
-If the project is already downloaded and checked out at V2.0.4, open PowerShell
+If the project is already downloaded and checked out at V2.0.5, open PowerShell
 in that directory and run:
 
 ```powershell
@@ -151,10 +151,10 @@ npm run db:migrate:remote
 
 The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
 
-V2.0.4 is a Worker-only configuration and public-documentation release and adds
+V2.0.5 is a Worker-only earning-policy and documentation release and adds
 no D1 migration. Existing production databases must still have every migration
-through `0006_bounded_operational_storage.sql` applied before deploying V2.0.4.
-Follow [the V2.0.4 release runbook](V2.0.4-RELEASE.md) for validation,
+through `0006_bounded_operational_storage.sql` applied before deploying V2.0.5.
+Follow [the V2.0.5 release guide](V2.0.5-RELEASE.md) for validation,
 deployment, verification, tagging, and rollback. The older
 [V2.0.3 runbook](V2.0.3-RELEASE.md) remains as release history.
 
@@ -341,7 +341,7 @@ Using only the configured administrator account:
 1. `/start` displays all dashboard actions.
 2. Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
-4. `/purchase` finds the customer by four or five final digits, records BDT 50 as exactly 1 point and BDT 500 as exactly 10 points, and displays them as 1.00 and 10.00 points.
+4. `/purchase` finds the customer by four or five final digits, rejects decimal BDT input, and follows the active centralized mode. With the V2.0.5 bracketed mode, verify 2,000/2,001, 4,000/4,001, 6,000/6,001, and 25,000/25,001 boundaries plus the configured floor behavior. In an isolated flat-mode test, BDT 50 records exactly 1 point and BDT 500 records exactly 10 points.
 5. `/addpoints` adds a fractional value, safely displays an HTML-like note, and labels the resulting total as the updated reward balance.
 6. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values. Verify that `Redeem All Points` still requires confirmation and reduces an exact balance with hidden third/fourth decimal precision to `0.00` without an insufficient-balance error.
 7. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.

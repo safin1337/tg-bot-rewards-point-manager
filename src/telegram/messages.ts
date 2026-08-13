@@ -84,7 +84,21 @@ const exactDecimalOrFraction = (numerator: number, denominator: number): string 
 export const helpMessageFromConfig = (config: AppConfiguration): string => {
   const runtime = deriveAppConfiguration(config);
   const branding = telegramBrandingFromConfig(config);
-  const earningPointLabel = runtime.rewards.earning.earnPoints === 1 ? "point" : "points";
+  const earning = runtime.rewards.earning;
+  const formatBdt = (value: number): string => String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const earningHelp = earning.mode === "flat"
+    ? `enter a positive whole-number BDT amount; every BDT ${earning.flat.spendBdt} earns ${earning.flat.earnPoints} ${earning.flat.earnPoints === 1 ? "point" : "points"}`
+    : `enter a positive whole-number BDT amount; whole-order brackets apply (${earning.bracketed.brackets
+      .map((bracket, index) => {
+        const previousMax = index === 0
+          ? 0
+          : earning.bracketed.brackets[index - 1]?.maxPurchaseBdt ?? 0;
+        const range = bracket.maxPurchaseBdt === null
+          ? `BDT ${formatBdt(previousMax + 1)} and above`
+          : `BDT ${formatBdt(previousMax + 1)}-${formatBdt(bracket.maxPurchaseBdt)}`;
+        return `${range}: every BDT ${bracket.spendBdt} earns ${bracket.earnPoints} ${bracket.earnPoints === 1 ? "point" : "points"}`;
+      })
+      .join("; ")}); point-floor protection is ${earning.bracketed.pointFloorProtection ? "enabled" : "disabled"}`;
   const redemptionPointLabel = runtime.rewards.redemption.points === 1 ? "point" : "points";
   const redemptionVerb = runtime.rewards.redemption.points === 1 ? "equals" : "equal";
   const valuePerPoint = exactDecimalOrFraction(
@@ -98,7 +112,7 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 • /addcustomer — register a zero-point customer.
 • For purchase, points, redemption, balance, or history, search with exactly the final 4 or 5 phone digits or enter the complete number.
 • Spaces and supported hyphens are accepted in complete phone numbers.
-• /purchase — every BDT ${runtime.rewards.earning.spendBdt} earns ${runtime.rewards.earning.earnPoints} ${earningPointLabel}; fractional points are retained.
+• /purchase — ${earningHelp}. Any fractional points resulting from the calculation are retained and rounded half-up to four decimal places before storage.
 • /addpoints — add a positive value with up to four decimal places and an optional note.
 • /redeem — enter a positive value with up to four decimal places, or use Redeem All Points to select the exact stored balance; confirmation is still required.
 • Telegram point amounts display with two decimals using standard half-up rounding.

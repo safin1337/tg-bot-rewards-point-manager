@@ -46,17 +46,71 @@ redemption, and balance messages include them.
 
 ## Purchase earning policy
 
-Configure the whole-number ratio under `rewards.earning`:
+Both earning systems are centralized under `rewards.earning`. Select the active
+system with one master switch:
 
 ```ts
 earning: {
-  spendBdt: 50,
-  earnPoints: 1
+  mode: "bracketed", // "flat" | "bracketed"
+
+  flat: {
+    policyId: "flat-50-v1",
+    spendBdt: 50,
+    earnPoints: 1
+  },
+
+  bracketed: {
+    policyId: "bracketed-50-60-70-80-100-v1",
+    pointFloorProtection: true,
+    brackets: [
+      { maxPurchaseBdt: 2_000, spendBdt: 50, earnPoints: 1 },
+      { maxPurchaseBdt: 4_000, spendBdt: 60, earnPoints: 1 },
+      { maxPurchaseBdt: 6_000, spendBdt: 70, earnPoints: 1 },
+      { maxPurchaseBdt: 25_000, spendBdt: 80, earnPoints: 1 },
+      { maxPurchaseBdt: null, spendBdt: 100, earnPoints: 1 }
+    ]
+  }
 }
 ```
 
-The application keeps `1 point = 10,000 point units`. Therefore the default is
-derived with integer arithmetic:
+`mode: "bracketed"` is active in V2.0.5 and selects one rate for the complete
+purchase amount. `mode: "flat"` remains available and applies BDT 50 = 1 point
+to every positive whole-BDT purchase.
+
+| Accepted amount | Whole-order rate |
+|---:|---:|
+| BDT 1-2,000 | BDT 50 = 1 point |
+| BDT 2,001-4,000 | BDT 60 = 1 point |
+| BDT 4,001-6,000 | BDT 70 = 1 point |
+| BDT 6,001-25,000 | BDT 80 = 1 point |
+| BDT 25,001 and above | BDT 100 = 1 point |
+
+This is not a progressive slab system. For example, BDT 4,000 uses the 60-BDT
+rate for all BDT 4,000; it does not add points calculated separately from the
+first and second ranges.
+
+Purchase input remains positive whole-number BDT only. Values such as
+`2000.50` remain invalid. A whole-BDT calculation can still produce fractional
+points: BDT 2,002 at the 60-BDT rate is 33.366666... points. The Worker uses
+integer rational arithmetic, rounds the final earned amount half-up once to
+four decimal places, and stores 33.3667 points as 333,667 point units. Telegram
+then displays 33.37 using its separate two-decimal rule.
+
+### Point-floor protection
+
+`pointFloorProtection` applies only in bracketed mode:
+
+- `true` prevents a higher amount from earning fewer points at a boundary. BDT
+  2,000 earns 40.0000 points; BDT 2,001 is protected at 40.0000 instead of
+  dropping to 33.3500. The award remains flat until the new rate catches up.
+- `false` applies only the selected whole-order bracket rate. BDT 2,001 then
+  earns 33.3500 points, even though BDT 2,000 earns 40.0000.
+
+Protected floors are recursive: each later bracket inherits the highest award
+at every preceding boundary. Flat mode ignores this switch.
+
+The application keeps `1 point = 10,000 point units`. Under the alternative
+flat policy:
 
 ```text
 1 point × 10,000 units ÷ BDT 50 = 200 point units per BDT
@@ -64,13 +118,13 @@ derived with integer arithmetic:
 
 BDT 1 earns 200 units, BDT 50 earns 10,000 units (1 point), and BDT 500 earns
 100,000 units (10 points). Runtime calculations and `/help` text derive from
-the same settings. A configuration is rejected during import/tests if its ratio
-cannot produce an exact, positive, supported whole-number point-unit conversion
-per BDT. JavaScript binary floating point is never the business source of
-truth.
+the active settings. Validation rejects invalid modes, IDs, rates, boundaries,
+unsafe arithmetic, missing final unbounded brackets, and unsupported results.
+JavaScript binary floating point is never the business source of truth.
 
-An earning-rate change affects only purchases confirmed after the new Worker is
-deployed. It does not recalculate or rewrite existing customer balances,
+An earning-mode, rate, bracket, floor, or rounding-policy change affects only
+purchases confirmed after the new Worker is deployed. It does not recalculate
+or rewrite existing customer balances,
 transactions, mutation receipts, reward snapshots, history, or leaderboard
 aggregates, so no D1 migration is needed. A pending confirmation calculated by
 an older Worker is rejected without mutation and must be restarted so its

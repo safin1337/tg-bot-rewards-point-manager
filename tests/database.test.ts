@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
+import { APP_CONFIG, deriveAppConfiguration, type AppConfiguration } from "../src/config/app-config";
 import { RewardMutationService } from "../src/application/mutation-service";
 import { CustomerRepository } from "../src/database/customer-repository";
 import { IdempotencyRepository } from "../src/database/idempotency-repository";
@@ -402,6 +403,37 @@ describe("D1 conversation state", () => {
       "UPDATE conversation_states SET payload_json = ? WHERE administrator_telegram_id = '123'"
     ).bind('{"token":5}').run();
     await expect(repository.get("123")).rejects.toThrow(/conversation state/i);
+  });
+
+  it("stores and validates the complete bracketed earning-policy fingerprint", async () => {
+    const config: AppConfiguration = {
+      ...APP_CONFIG,
+      rewards: {
+        ...APP_CONFIG.rewards,
+        earning: { ...APP_CONFIG.rewards.earning, mode: "bracketed" }
+      }
+    };
+    const policyId = deriveAppConfiguration(config).rewards.earning.policyId;
+    const created = await customers().createZeroBalance(
+      normalizePhone("01712345678"),
+      199,
+      new Date().toISOString()
+    );
+    const repository = new StateRepository(env.DB, 30);
+    const initial = await repository.start("123", "PURCHASE", "CONFIRM_PURCHASE", 200);
+    await repository.save({
+      ...initial,
+      selectedCustomerId: created.customer.id,
+      selectedWhatsappNumber: created.customer.whatsappNumber,
+      payload: {
+        token: initial.payload.token,
+        purchaseAmountBdt: 2_001,
+        pointUnits: 400_000,
+        earningPolicyId: policyId,
+        expectedBalanceUnits: 0
+      }
+    });
+    expect((await repository.get("123")).state?.payload.earningPolicyId).toBe(policyId);
   });
 });
 

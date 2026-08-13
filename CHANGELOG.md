@@ -2,6 +2,49 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.5] - 2026-08-13
+
+### Centralized earning modes
+
+- Added a master `rewards.earning.mode` switch in `APP_CONFIG` with `"flat"`
+  and `"bracketed"` options. V2.0.5 activates the bracketed whole-order policy;
+  the alternative flat policy preserves BDT 50 = 1 point for every positive
+  whole-BDT purchase.
+- Added the configurable whole-order brackets BDT 1-2,000 at 50:1, BDT
+  2,001-4,000 at 60:1, BDT 4,001-6,000 at 70:1, BDT 6,001-25,000 at 80:1,
+  and BDT 25,001+ at 100:1. This is not a progressive slab calculation.
+- Added the independent `pointFloorProtection` switch. When enabled, each
+  later bracket inherits the highest award at preceding boundaries so spending
+  more never reduces earned points; when disabled, the selected bracket rate
+  applies without protection.
+
+### Exact arithmetic and deployment safety
+
+- Preserved positive whole-number BDT purchase input and continued rejecting
+  decimals, zero, negatives, whitespace, and other invalid formats.
+- Added integer-only rational earning calculations that round half-up once to
+  four-decimal point-unit precision before storage. Telegram continues to
+  display point amounts with its separate two-decimal half-up rule.
+- Expanded the earning-policy fingerprint to cover the active mode, policy ID,
+  rate or bracket boundaries, floor state, and rounding policy. Pending
+  confirmations created under a different policy are rejected before mutation.
+- Existing balances, completed transactions, history, reward snapshots,
+  leaderboard totals, mutation receipts, and redemption behavior are not
+  recalculated or rewritten. No D1 migration or data backfill is required.
+
+### Documentation and validation
+
+- Updated the README, customization, database, installation, Telegram workflow,
+  release, and permanent-agent guidance for both earning modes and their safety
+  boundaries.
+- Added configuration validation and regression coverage for flat compatibility,
+  all bracket boundaries, half-up four-decimal storage, floor enabled/disabled,
+  recursive floors, non-progressive behavior, help text, stale-policy
+  protection, and active-mode-independent test fixtures.
+- No Git branch, commit, tag, push, GitHub release, Cloudflare deployment,
+  webhook registration, remote D1 operation, or production-secret change was
+  performed during build preparation.
+
 ## [2.0.4] - 2026-08-10
 
 ### Exact full-balance redemption

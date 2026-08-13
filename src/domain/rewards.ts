@@ -1,8 +1,10 @@
-import { APP_RUNTIME_CONFIG } from "../config/app-config";
+import {
+  APP_RUNTIME_CONFIG,
+  type RuntimeEarningConfiguration
+} from "../config/app-config";
 import { DomainError } from "./errors";
 
 export const POINT_UNITS_PER_POINT = 10_000;
-export const POINT_UNITS_PER_BDT = APP_RUNTIME_CONFIG.rewards.earning.pointUnitsPerBdt;
 export const POINT_UNITS_PER_REWARD_BDT = APP_RUNTIME_CONFIG.rewards.redemption.pointUnitsPerRewardBdt;
 export const EARNING_POLICY_ID = APP_RUNTIME_CONFIG.rewards.earning.policyId;
 export const SQLITE_MAX_INTEGER = 9_007_199_254_740_991;
@@ -13,17 +15,46 @@ export const assertSafeNonnegativeInteger = (value: number): void => {
   }
 };
 
-export const purchaseToPointUnits = (purchaseAmountBdt: number): number => {
+const halfUpPointUnits = (
+  purchaseAmountBdt: number,
+  spendBdt: number,
+  earnPoints: number
+): number => {
+  const numerator = BigInt(purchaseAmountBdt) * BigInt(earnPoints) * BigInt(POINT_UNITS_PER_POINT);
+  const denominator = BigInt(spendBdt);
+  const result = (numerator * 2n + denominator) / (denominator * 2n);
+  if (result <= 0n || result > BigInt(SQLITE_MAX_INTEGER)) {
+    throw new DomainError("UNSAFE_INTEGER", "The purchase amount is too large.");
+  }
+  return Number(result);
+};
+
+export const purchaseToPointUnitsForPolicy = (
+  purchaseAmountBdt: number,
+  earning: RuntimeEarningConfiguration
+): number => {
   if (!Number.isSafeInteger(purchaseAmountBdt) || purchaseAmountBdt <= 0) {
     throw new DomainError("INVALID_PURCHASE", "Enter a positive whole-number purchase amount in BDT.");
   }
-  if (purchaseAmountBdt > Math.floor(SQLITE_MAX_INTEGER / POINT_UNITS_PER_BDT)) {
-    throw new DomainError("UNSAFE_INTEGER", "The purchase amount is too large.");
+  if (earning.mode === "flat") {
+    return halfUpPointUnits(
+      purchaseAmountBdt,
+      earning.flat.spendBdt,
+      earning.flat.earnPoints
+    );
   }
-  const result = purchaseAmountBdt * POINT_UNITS_PER_BDT;
-  assertSafeNonnegativeInteger(result);
-  return result;
+  const bracket = earning.bracketed.brackets.find(
+    (candidate) => candidate.maxPurchaseBdt === null || purchaseAmountBdt <= candidate.maxPurchaseBdt
+  );
+  if (bracket === undefined) throw new Error("The earning brackets are incomplete.");
+  const calculated = halfUpPointUnits(purchaseAmountBdt, bracket.spendBdt, bracket.earnPoints);
+  return earning.bracketed.pointFloorProtection
+    ? Math.max(calculated, bracket.protectedFloorUnits)
+    : calculated;
 };
+
+export const purchaseToPointUnits = (purchaseAmountBdt: number): number =>
+  purchaseToPointUnitsForPolicy(purchaseAmountBdt, APP_RUNTIME_CONFIG.rewards.earning);
 
 export const roundRewardBdt = (pointUnits: number): number => {
   assertSafeNonnegativeInteger(pointUnits);

@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-V2.0.4 uses a hybrid message model to reduce clutter without making
+V2.0.5 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
@@ -29,6 +29,24 @@ the generated heading remains `SoulShop Rewards Point System`.
   or exact CSV export values.
 - The rule applies to prompts, confirmations, success and balance messages,
   insufficient-balance notices, customer details, history, and leaderboards.
+
+## Purchase earning modes
+
+- `/purchase` continues to accept positive whole-number BDT only. Decimal input
+  remains invalid.
+- Flat mode uses the one configured ratio for every purchase. Bracketed mode
+  selects one rate for the complete amount; it is not a progressive slab.
+- V2.0.5 ships with bracketed mode active and point-floor protection enabled;
+  flat mode remains available through the centralized configuration.
+- Optional point-floor protection prevents a later bracket from dropping below
+  the recursively protected award at preceding boundaries. With protection
+  disabled, the raw bracket result is used even when it drops.
+- Earned points are calculated with integer rational arithmetic and rounded
+  half-up once to four-decimal point-unit precision before confirmation. The
+  existing two-decimal Telegram format is presentation only.
+- Each confirmation carries a fingerprint of the active mode, rates,
+  boundaries, floor state, and rounding policy. A mismatch clears the workflow
+  before any receipt, balance, transaction, or leaderboard mutation.
 
 ## Redeem All Points
 

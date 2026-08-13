@@ -4,6 +4,7 @@ import { processTelegramUpdate } from "../src/application/bot-controller";
 import { RewardMutationService } from "../src/application/mutation-service";
 import { CustomerRepository } from "../src/database/customer-repository";
 import { normalizePhone } from "../src/domain/phone";
+import { EARNING_POLICY_ID } from "../src/domain/rewards";
 import { readConfig } from "../src/env";
 import type { TelegramUpdate } from "../src/telegram/types";
 import { makeWorkflowContext } from "../src/workflows/context";
@@ -187,7 +188,7 @@ describe("stateful customer search and purchase", () => {
       payload: {
         purchaseAmountBdt: 500,
         pointUnits: 100_000,
-        earningPolicyId: "earning:50:1:200",
+        earningPolicyId: EARNING_POLICY_ID,
         expectedBalanceUnits: 0
       }
     });

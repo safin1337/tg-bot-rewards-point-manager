@@ -7,11 +7,23 @@ These rules are mandatory for every future coding agent working in this reposito
 - Preserve the integer point-unit architecture. Never make floating-point points the source of truth.
 - `1 point = 10,000 point units`.
 - Use `APP_CONFIG` as the only runtime source of configurable reward ratios.
-- The default purchase formula is
-  `pointUnitsEarned = purchaseAmountBdt * 200`, derived exactly from
-  `BDT 50 = 1 point`; never duplicate the multiplier in runtime code or help text.
-- Validate configured ratios with integer arithmetic and reject any ratio that
-  cannot produce an exact supported whole-number point-unit conversion per BDT.
+- Preserve the centralized `flat`/`bracketed` earning-mode switch. V2.0.5 ships
+  with the bracketed policy active and point-floor protection enabled. The
+  alternative flat policy remains `BDT 50 = 1 point`; never duplicate either
+  policy's arithmetic in runtime code or help text.
+- Purchase input remains positive whole-number BDT only. Do not add decimal or
+  poisha purchase input without an explicit future requirement and design review.
+- Bracketed mode is a whole-order calculation with boundaries 1-2,000 at 50:1,
+  2,001-4,000 at 60:1, 4,001-6,000 at 70:1, 6,001-25,000 at 80:1, and 25,001+
+  at 100:1. Never silently convert it to progressive slabs.
+- Preserve the independent bracketed `pointFloorProtection` switch. When true,
+  recursively protect the highest award at preceding boundaries; when false,
+  use the raw selected bracket result even if it drops.
+- Calculate earned purchase points with integer rational arithmetic, round
+  half-up once to four decimal places, and store the resulting point units.
+- Validate configured ratios, policy IDs, ordered boundaries, one final
+  unbounded bracket, floor state, safe-integer arithmetic, and the supported
+  database integer range.
 - Validate safe-integer arithmetic and the supported database integer range.
 - Reward rounding for a nonnegative balance is exactly:
   `floor((pointUnits + 20,000) / 40,000)`.
@@ -95,7 +107,9 @@ These rules are mandatory for every future coding agent working in this reposito
 - Button-only transitions, confirmation results, search/history pagination, and leaderboard navigation normally edit the callback's bot message. Treat `message is not modified` as success and use one send-message fallback when editing is unavailable.
 - Complete a database mutation before displaying success. An edit failure after commit must never repeat or misreport the mutation; keep enough temporary state for an idempotent retry until the success display is delivered.
 - Bind each pending purchase confirmation to the earning-policy identifier used
-  for its displayed calculation. If the configured earning policy changes,
+  for its displayed calculation. The fingerprint must cover the active mode,
+  relevant rate/brackets, point-floor state, and four-decimal rounding policy.
+  If the configured earning policy changes,
   clear/restart the stale workflow before any receipt, balance, transaction, or
   leaderboard mutation.
 - After typed administrator input, send the next bot response as a new message when editing an older bot message would break chronological order. Never edit administrator messages or document messages.

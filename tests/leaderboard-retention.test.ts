@@ -362,6 +362,8 @@ describe("Dhaka leaderboard periods, ranking, and display", () => {
     const text = leaderboardMessage(period, [{
       customerId: 1,
       whatsappNumber: "+8801712345678",
+      whatsappUsername: null,
+      telegramUsername: null,
       earnedPointUnits: 12_345,
       firstQualifyingEarningAtUtc: CURRENT_ISO
     }]);

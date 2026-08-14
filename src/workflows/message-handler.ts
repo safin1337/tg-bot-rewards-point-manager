@@ -1,7 +1,17 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone, validateSearchDigits } from "../domain/phone";
+import {
+  customerIdentifierValue,
+  identifierDisplayValue,
+  identifierInputValue,
+  identifierTypeLabel,
+  normalizeUsername,
+  type CustomerIdentifierInput,
+  type CustomerIdentifierType
+} from "../domain/customer-identity";
 import { formatPointUnitsForDisplay, parsePointUnits, parsePurchaseAmount } from "../domain/points";
 import { EARNING_POLICY_ID, purchaseToPointUnits, safeBalanceAfter } from "../domain/rewards";
+import { newStateToken } from "../database/state-repository";
 import {
   addCustomerConfirmKeyboard,
   backCancelKeyboard,
@@ -9,10 +19,16 @@ import {
   createForOperationKeyboard,
   confirmKeyboard,
   existingCustomerKeyboard,
+  identityChangeConfirmKeyboard,
+  manageCustomerKeyboard,
   missingCustomerKeyboard,
   skipNoteKeyboard
 } from "../telegram/keyboards";
-import { BRAND, existingCustomerMessage } from "../telegram/messages";
+import {
+  BRAND,
+  existingCustomerMessage,
+  identityChangeConfirmationMessage
+} from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { ConversationState } from "../types/models";
 import { pointConfirmation, promptAfterSelection, purchaseConfirmation, showSearchResults } from "./common";
@@ -24,15 +40,30 @@ const friendlyDomainError = (error: DomainError): string => {
   return `⚠️ ${escapeHtml(error.message)}`;
 };
 
-const handleFullPhone = async (
+const parseIdentifier = (
+  type: CustomerIdentifierType,
+  text: string
+): CustomerIdentifierInput => type === "WHATSAPP_PHONE"
+  ? { type, phone: normalizePhone(text) }
+  : { type, username: normalizeUsername(text) };
+
+const handleExactIdentifier = async (
   context: WorkflowContext,
   state: ConversationState,
   chatId: number,
   text: string
 ): Promise<void> => {
-  let phone;
+  const type = state.selectionMode === "PHONE_FULL"
+    ? "WHATSAPP_PHONE"
+    : state.selectionMode === "WHATSAPP_USERNAME"
+      ? "WHATSAPP_USERNAME"
+      : state.selectionMode === "TELEGRAM_USERNAME"
+        ? "TELEGRAM_USERNAME"
+        : null;
+  if (type === null) throw new Error("Exact identifier search mode is missing.");
+  let identifier: CustomerIdentifierInput;
   try {
-    phone = normalizePhone(text);
+    identifier = parseIdentifier(type, text);
   } catch (error: unknown) {
     if (!(error instanceof DomainError)) throw error;
     await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
@@ -40,7 +71,7 @@ const handleFullPhone = async (
     });
     return;
   }
-  const customer = await context.customers.findByPhone(phone.normalized);
+  const customer = await context.customers.findByIdentifier(identifier);
   if (customer !== null) {
     await promptAfterSelection(context, state, customer, chatId);
     return;
@@ -50,32 +81,39 @@ const handleFullPhone = async (
       ...state,
       currentStep: "CONFIRM_CREATE_FOR_OPERATION",
       selectedCustomerId: null,
-      selectedWhatsappNumber: phone.normalized,
-      payload: { token: state.payload.token, pendingPhone: phone.normalized }
+      payload: {
+        token: state.payload.token,
+        pendingIdentifierType: type,
+        pendingIdentifierValue: identifierInputValue(identifier)
+      }
     });
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\nCustomer Not Found\n\nCreate ${escapeHtml(phone.normalized)} with zero points and continue?`,
+      `${BRAND}\n\nCustomer Not Found\n\nCreate ${escapeHtml(identifierDisplayValue(type, identifierInputValue(identifier)))} with zero points and continue?`,
       { replyMarkup: createForOperationKeyboard(saved.payload.token) }
     );
     return;
   }
   await context.telegram.sendMessage(
     chatId,
-    `${BRAND}\n\n⚠️ Customer Not Found\n\nNo customer is registered as ${escapeHtml(phone.normalized)}.`,
+    `${BRAND}\n\n⚠️ Customer Not Found\n\nNo customer is registered with that ${escapeHtml(identifierTypeLabel(type).toLowerCase())}.`,
     { replyMarkup: missingCustomerKeyboard(state.payload.token) }
   );
 };
 
-const handleAddCustomerNumber = async (
+const handleAddCustomerIdentifier = async (
   context: WorkflowContext,
   state: ConversationState,
   chatId: number,
   text: string
 ): Promise<void> => {
-  let phone;
+  const type = state.currentStep === "AWAIT_ADD_CUSTOMER_NUMBER"
+    ? "WHATSAPP_PHONE"
+    : state.payload.pendingIdentifierType;
+  if (type === undefined) throw new Error("New-customer identifier type is missing.");
+  let identifier: CustomerIdentifierInput;
   try {
-    phone = normalizePhone(text);
+    identifier = parseIdentifier(type, text);
   } catch (error: unknown) {
     if (!(error instanceof DomainError)) throw error;
     await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
@@ -83,12 +121,11 @@ const handleAddCustomerNumber = async (
     });
     return;
   }
-  const existing = await context.customers.findByPhone(phone.normalized);
+  const existing = await context.customers.findByIdentifier(identifier);
   if (existing !== null) {
     const saved = await context.states.save({
       ...state,
       selectedCustomerId: existing.id,
-      selectedWhatsappNumber: existing.whatsappNumber,
       payload: { token: state.payload.token }
     });
     await context.telegram.sendMessage(chatId, existingCustomerMessage(existing), {
@@ -100,13 +137,84 @@ const handleAddCustomerNumber = async (
     ...state,
     currentStep: "CONFIRM_ADD_CUSTOMER",
     selectedCustomerId: null,
-    selectedWhatsappNumber: phone.normalized,
-    payload: { token: state.payload.token, pendingPhone: phone.normalized }
+    payload: {
+      token: state.payload.token,
+      pendingIdentifierType: type,
+      pendingIdentifierValue: identifierInputValue(identifier)
+    }
   });
   await context.telegram.sendMessage(
     chatId,
-    `${BRAND}\n\n<b>Confirm New Customer</b>\n\nCustomer: ${escapeHtml(phone.normalized)}\nStarting Points: 0.00 points\nStarting Reward Value: ≈ BDT 0`,
+    `${BRAND}\n\n<b>Confirm New Customer</b>\n\n${escapeHtml(identifierTypeLabel(type))}: ${escapeHtml(identifierDisplayValue(type, identifierInputValue(identifier)))}\nStarting Points: 0.00 points\nStarting Reward Value: ≈ BDT 0`,
     { replyMarkup: addCustomerConfirmKeyboard(saved.payload.token) }
+  );
+};
+
+const handleManagedIdentifier = async (
+  context: WorkflowContext,
+  state: ConversationState,
+  chatId: number,
+  text: string
+): Promise<void> => {
+  if (state.selectedCustomerId === null || state.payload.pendingIdentifierType === undefined) {
+    throw new Error("Customer identity state is incomplete.");
+  }
+  const type = state.payload.pendingIdentifierType;
+  let identifier: CustomerIdentifierInput;
+  try {
+    identifier = parseIdentifier(type, text);
+  } catch (error: unknown) {
+    if (!(error instanceof DomainError)) throw error;
+    await context.telegram.sendMessage(chatId, `${BRAND}\n\n${friendlyDomainError(error)}`, {
+      replyMarkup: backCancelKeyboard(state.payload.token, "i", "⬅️ Back to Identity Management")
+    });
+    return;
+  }
+  const customer = await context.customers.findById(state.selectedCustomerId);
+  if (customer === null) throw new DomainError("IDENTIFIER_STALE", "The selected customer no longer exists.");
+  const owner = await context.customers.findByIdentifier(identifier);
+  if (owner !== null && owner.id !== customer.id) {
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "MANAGE_CUSTOMER",
+      payload: { token: newStateToken() }
+    });
+    await context.telegram.sendMessage(
+      chatId,
+      `${BRAND}\n\n⚠️ That ${escapeHtml(identifierTypeLabel(type).toLowerCase())} already belongs to Customer #${owner.id}.\n\nNo records were merged or changed.`,
+      { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
+    );
+    return;
+  }
+  const requested = identifierInputValue(identifier);
+  const current = customerIdentifierValue(customer, type);
+  if (current === requested) {
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "MANAGE_CUSTOMER",
+      payload: { token: newStateToken() }
+    });
+    await context.telegram.sendMessage(
+      chatId,
+      `${BRAND}\n\nℹ️ This customer already uses ${escapeHtml(identifierDisplayValue(type, requested))}.`,
+      { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
+    );
+    return;
+  }
+  const saved = await context.states.save({
+    ...state,
+    currentStep: "CONFIRM_IDENTITY_CHANGE",
+    payload: {
+      token: state.payload.token,
+      pendingIdentifierType: type,
+      pendingIdentifierValue: requested,
+      expectedIdentifierValue: current
+    }
+  });
+  await context.telegram.sendMessage(
+    chatId,
+    identityChangeConfirmationMessage(customer, type, requested),
+    { replyMarkup: identityChangeConfirmKeyboard(saved.payload.token) }
   );
 };
 
@@ -129,22 +237,31 @@ export const handleStateMessage = async (
     }
     const saved = await context.states.save({
       ...state,
-      searchDigits: digits,
+      searchQuery: digits,
       searchPage: 0,
       selectedCustomerId: null,
-      selectedWhatsappNumber: null
     });
     await showSearchResults(context, saved, chatId, 0);
     return;
   }
 
   if (state.currentStep === "AWAIT_FULL_NUMBER") {
-    await handleFullPhone(context, state, chatId, text);
+    await handleExactIdentifier(context, state, chatId, text);
     return;
   }
 
   if (state.currentStep === "AWAIT_ADD_CUSTOMER_NUMBER") {
-    await handleAddCustomerNumber(context, state, chatId, text);
+    await handleAddCustomerIdentifier(context, state, chatId, text);
+    return;
+  }
+
+  if (state.currentStep === "AWAIT_ADD_CUSTOMER_IDENTITY") {
+    await handleAddCustomerIdentifier(context, state, chatId, text);
+    return;
+  }
+
+  if (state.currentStep === "AWAIT_IDENTITY_VALUE") {
+    await handleManagedIdentifier(context, state, chatId, text);
     return;
   }
 

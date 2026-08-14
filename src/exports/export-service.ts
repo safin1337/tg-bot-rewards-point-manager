@@ -37,13 +37,16 @@ export class ExportService {
     const customers = await this.customers.listAll(this.maxRows + 1);
     const contents = createCsv(
       [
-        "customer_id", "whatsapp_number", "current_points", "point_balance_units",
+        "customer_id", "whatsapp_number", "whatsapp_username", "telegram_username",
+        "current_points", "point_balance_units",
         "rounded_reward_bdt", "created_at_utc", "created_at_dhaka", "updated_at_utc",
         "updated_at_dhaka"
       ],
       customers.map((customer) => [
         customer.id,
         customer.whatsappNumber,
+        customer.whatsappUsername,
+        customer.telegramUsername,
         formatPointUnits(customer.pointBalanceUnits),
         customer.pointBalanceUnits,
         customer.roundedRewardBdt,
@@ -64,7 +67,8 @@ export class ExportService {
     const transactions = await this.transactions.listAll(this.maxRows + 1);
     const contents = createCsv(
       [
-        "transaction_id", "customer_id", "whatsapp_number", "transaction_type",
+        "transaction_id", "customer_id", "whatsapp_number", "whatsapp_username",
+        "telegram_username", "transaction_type",
         "purchase_amount_bdt", "points_delta", "points_delta_units", "balance_before",
         "balance_before_units", "balance_after", "balance_after_units",
         "rounded_reward_before_bdt", "rounded_reward_after_bdt",
@@ -75,6 +79,8 @@ export class ExportService {
         transaction.id,
         transaction.customerId,
         transaction.whatsappNumber,
+        transaction.whatsappUsername,
+        transaction.telegramUsername,
         transaction.transactionType,
         transaction.purchaseAmountBdt,
         `${transaction.pointsDeltaUnits > 0 ? "+" : ""}${formatPointUnits(transaction.pointsDeltaUnits)}`,

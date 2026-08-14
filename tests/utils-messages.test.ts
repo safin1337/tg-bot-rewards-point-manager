@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCsv, csvCell, safeCsvText } from "../src/utils/csv";
 import { escapeHtml } from "../src/utils/html";
 import { dhakaDate, formatDhakaDateTime } from "../src/utils/time";
+import { normalizeUsername } from "../src/domain/customer-identity";
 import {
   addCustomerSuccessMessage,
   balanceMessage,
@@ -26,6 +27,8 @@ import type { Customer, RewardTransaction } from "../src/types/models";
 const customer: Customer = {
   id: 1,
   whatsappNumber: "+8801712345678",
+  whatsappUsername: null,
+  telegramUsername: null,
   phoneLast4: "5678",
   phoneLast5: "45678",
   pointBalanceUnits: 65_625,
@@ -35,6 +38,22 @@ const customer: Customer = {
   createdAtUtc: "2026-07-29T09:30:00.000Z",
   updatedAtUtc: "2026-07-29T09:30:00.000Z"
 };
+
+describe("username normalization", () => {
+  it("removes one leading @, preserves display capitalization, and lowers only lookup", () => {
+    expect(normalizeUsername(" @Safin_Ahmed ")).toEqual({
+      display: "Safin_Ahmed",
+      lookup: "safin_ahmed"
+    });
+  });
+
+  it.each(["@", "@@safin", "safin-ahmed", "safin ahmed", "a".repeat(65)])(
+    "rejects invalid username %s",
+    (username) => {
+      expect(() => normalizeUsername(username)).toThrow(/username/i);
+    }
+  );
+});
 
 const customerWithLargeBalance: Customer = {
   ...customer,

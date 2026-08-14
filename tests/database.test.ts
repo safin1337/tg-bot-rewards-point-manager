@@ -6,6 +6,7 @@ import { CustomerRepository } from "../src/database/customer-repository";
 import { IdempotencyRepository } from "../src/database/idempotency-repository";
 import { StateRepository, newStateToken } from "../src/database/state-repository";
 import { TransactionRepository } from "../src/database/transaction-repository";
+import { normalizeUsername } from "../src/domain/customer-identity";
 import { normalizePhone } from "../src/domain/phone";
 import { purchaseToPointUnits } from "../src/domain/rewards";
 
@@ -139,6 +140,179 @@ describe("customer repository and deterministic suffix search", () => {
     expect(second.customers).toHaveLength(2);
     expect(second.hasNext).toBe(false);
     expect(first.customers[0]?.id).toBeLessThan(first.customers[1]?.id ?? 0);
+  });
+});
+
+describe("multi-identifier customer identity", () => {
+  it("preserves username capitalization while lookup and uniqueness are case-insensitive", async () => {
+    const repository = customers();
+    const created = await repository.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("@Safin_Ahmed") },
+      700,
+      "2026-08-14T06:00:00.000Z"
+    );
+
+    expect(created.customer).toMatchObject({
+      whatsappNumber: null,
+      whatsappUsername: "Safin_Ahmed",
+      telegramUsername: null
+    });
+    expect((await repository.findByWhatsappUsername("safin_ahmed"))?.id).toBe(created.customer.id);
+    expect((await repository.findByWhatsappUsername("SAFIN_AHMED"))?.id).toBe(created.customer.id);
+
+    const duplicate = await repository.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("SAFIN_AHMED") },
+      701,
+      "2026-08-14T06:01:00.000Z"
+    );
+    expect(duplicate).toMatchObject({ created: false, customer: { id: created.customer.id } });
+    expect(await repository.countAllUpTo(10)).toBe(1);
+  });
+
+  it("allows the same username text once on each platform but rejects a same-platform claim", async () => {
+    const repository = customers();
+    const whatsapp = await repository.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("Shared_Name") },
+      702,
+      "2026-08-14T06:02:00.000Z"
+    );
+    const telegram = await repository.createZeroBalance(
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("shared_name") },
+      703,
+      "2026-08-14T06:03:00.000Z"
+    );
+    const third = await repository.createZeroBalance(
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01712345678") },
+      704,
+      "2026-08-14T06:04:00.000Z"
+    );
+
+    expect(telegram.customer.id).not.toBe(whatsapp.customer.id);
+    await expect(repository.changeIdentifier(
+      third.customer.id,
+      "WHATSAPP_USERNAME",
+      null,
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("SHARED_NAME") },
+      "2026-08-14T06:05:00.000Z"
+    )).rejects.toMatchObject({ code: "IDENTIFIER_CONFLICT" });
+    expect((await repository.findById(third.customer.id))?.whatsappUsername).toBeNull();
+  });
+
+  it("changes aliases atomically, updates phone suffixes, and preserves reward records", async () => {
+    const repository = customers();
+    const created = await repository.createZeroBalance(
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01712345678") },
+      705,
+      "2026-08-14T06:05:00.000Z"
+    );
+    await new RewardMutationService(env.DB).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 25_000,
+      purchaseAmountBdt: null,
+      note: "identity-safe",
+      telegramUpdateId: 706,
+      expectedBalanceUnits: 0
+    });
+
+    await repository.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_USERNAME",
+      null,
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      "2026-08-14T06:06:00.000Z"
+    );
+    const changedPhone = await repository.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_PHONE",
+      "+8801712345678",
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01898765432") },
+      "2026-08-14T06:07:00.000Z"
+    );
+
+    expect(changedPhone.customer).toMatchObject({
+      whatsappNumber: "+8801898765432",
+      phoneLast4: "5432",
+      phoneLast5: "65432",
+      whatsappUsername: "Safin_Ahmed",
+      pointBalanceUnits: 25_000
+    });
+    expect(await repository.findByPhone("+8801712345678")).toBeNull();
+    expect((await repository.searchBySuffix("5432", 0)).customers.map((row) => row.id))
+      .toContain(created.customer.id);
+    expect((await transactions().listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(1);
+
+    const removedPhone = await repository.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_PHONE",
+      "+8801898765432",
+      null,
+      "2026-08-14T06:08:00.000Z"
+    );
+    expect(removedPhone.customer).toMatchObject({
+      whatsappNumber: null,
+      phoneLast4: null,
+      phoneLast5: null,
+      whatsappUsername: "Safin_Ahmed",
+      pointBalanceUnits: 25_000
+    });
+    expect((await repository.searchBySuffix("5432", 0)).customers).toHaveLength(0);
+    expect((await transactions().listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(1);
+  });
+
+  it("supports capitalization-only updates and makes a retried confirmation harmless", async () => {
+    const repository = customers();
+    const created = await repository.createZeroBalance(
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("safin_ahmed") },
+      707,
+      "2026-08-14T06:08:00.000Z"
+    );
+    const first = await repository.changeIdentifier(
+      created.customer.id,
+      "TELEGRAM_USERNAME",
+      "safin_ahmed",
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      "2026-08-14T06:09:00.000Z"
+    );
+    const replay = await repository.changeIdentifier(
+      created.customer.id,
+      "TELEGRAM_USERNAME",
+      "safin_ahmed",
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      "2026-08-14T06:09:00.000Z"
+    );
+
+    expect(first).toMatchObject({ changed: true, duplicate: false });
+    expect(first.customer.telegramUsername).toBe("Safin_Ahmed");
+    expect(replay).toMatchObject({ changed: false, duplicate: true });
+  });
+
+  it("rejects stale changes and prevents removal of the final identifier", async () => {
+    const repository = customers();
+    const created = await repository.createZeroBalance(
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01712345678") },
+      708,
+      "2026-08-14T06:10:00.000Z"
+    );
+
+    await expect(repository.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_PHONE",
+      "+8801999999999",
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01898765432") },
+      "2026-08-14T06:11:00.000Z"
+    )).rejects.toMatchObject({ code: "IDENTIFIER_STALE" });
+    await expect(repository.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_PHONE",
+      "+8801712345678",
+      null,
+      "2026-08-14T06:12:00.000Z"
+    )).rejects.toMatchObject({ code: "LAST_IDENTIFIER" });
+    expect((await repository.findById(created.customer.id))?.whatsappNumber)
+      .toBe("+8801712345678");
   });
 });
 
@@ -421,8 +595,8 @@ describe("D1 conversation state", () => {
     const searched = await repository.save({
       ...initial,
       currentStep: "SHOW_RESULTS",
-      selectionMode: "SUFFIX",
-      searchDigits: "5678",
+      selectionMode: "PHONE_SUFFIX",
+      searchQuery: "5678",
       searchPage: 3
     });
     const rotated = newStateToken();
@@ -430,13 +604,12 @@ describe("D1 conversation state", () => {
       ...searched,
       currentStep: "AWAIT_SEARCH",
       selectedCustomerId: null,
-      selectedWhatsappNumber: null,
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0,
       payload: { token: rotated }
     });
     expect(reset.activeOperation).toBe("PURCHASE");
-    expect(reset.searchDigits).toBeNull();
+    expect(reset.searchQuery).toBeNull();
     expect(reset.searchPage).toBe(0);
     expect(reset.payload.token).toBe(rotated);
     expect(reset.payload.token).not.toBe(initial.payload.token);
@@ -476,7 +649,6 @@ describe("D1 conversation state", () => {
     await repository.save({
       ...initial,
       selectedCustomerId: created.customer.id,
-      selectedWhatsappNumber: created.customer.whatsappNumber,
       payload: {
         token: initial.payload.token,
         purchaseAmountBdt: 2_001,

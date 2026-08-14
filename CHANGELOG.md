@@ -2,6 +2,50 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.6] - 2026-08-14
+
+### Multi-identifier customers
+
+- Kept `customers.id` as the immutable customer identity while adding nullable,
+  independently unique WhatsApp username and Telegram username aliases beside
+  the existing WhatsApp phone alias.
+- Preserved entered username capitalization for Telegram and CSV display while
+  making search and uniqueness case-insensitive. One optional leading `@` is
+  discarded; accepted username characters are `A-Z`, `a-z`, `0-9`, and `_`,
+  with a 64-character maximum.
+- Added exact WhatsApp-username and Telegram-username search to every customer
+  operation. Phone suffix and normalized full-phone search remain available.
+- Added `/managecustomer` and dashboard/customer-action entry points for adding,
+  changing, and removing current aliases. The final alias cannot be removed.
+- Updated `/addcustomer` so a new zero-point customer can start with any one of
+  the three alias types. Existing reward rules and zero-transaction creation
+  behavior are unchanged.
+
+### Concurrency and data safety
+
+- Added conditional identifier updates bound to the exact value displayed at
+  confirmation time. A concurrent change is rejected as stale instead of being
+  overwritten; no `identity_version` column or identity-history table is used.
+- Added database-level case-insensitive uniqueness, phone/suffix consistency,
+  and at-least-one-identifier constraints. Duplicate aliases are rejected and
+  customers are never merged automatically.
+- Added migration `0007_multi_identifier_customers.sql`. It preserves customer
+  IDs, balances, transactions, mutation receipts, leaderboard aggregates, and
+  conversation state while rebuilding every table whose foreign key depends on
+  `customers`. Copy and foreign-key guards abort the migration on inconsistency.
+- Identity edits never create reward transactions and never recalculate or
+  rewrite balances, retained history, receipts, or leaderboard totals.
+
+### Exports, documentation, and validation
+
+- Added WhatsApp and Telegram username columns to customer and transaction CSV
+  exports and identifier-aware labels to messages and leaderboards.
+- Added a V2.0.6 release runbook with mandatory pre-migration backup and
+  post-migration integrity checks. No production migration, deployment,
+  webhook registration, or command registration was performed by this work.
+- Expanded domain, repository, workflow, migration, stale-state, duplicate,
+  last-alias, retry, and reward-preservation tests.
+
 ## [2.0.5] - 2026-08-13
 
 ### Centralized earning modes

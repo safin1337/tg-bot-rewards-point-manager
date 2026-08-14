@@ -4,6 +4,8 @@ A production-ready Telegram bot for managing customer loyalty and reward points
 for a business. It allows an authorized administrator to register customers,
 record purchases, manually add points, redeem points, check balances, review
 transaction history, view leaderboards, and export operational data.
+Each customer may be found by a WhatsApp phone, WhatsApp username, or Telegram
+username without changing the immutable D1 customer ID that owns reward data.
 
 The application is deployed as a Cloudflare Worker and uses Cloudflare D1, a
 managed serverless SQL database built on SQLite. It requires no continuously
@@ -118,6 +120,25 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 - Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
 - Completed mutation receipts correspond to retained detail rows; a per-customer update-ID high-water mark rejects delayed updates after their bounded receipts are pruned.
 
+## Customer identity rules
+
+- `customers.id` is the permanent internal identity. Balances, transactions,
+  receipts, and leaderboard aggregates continue to reference that ID.
+- A customer has up to one WhatsApp phone, one WhatsApp username, and one
+  Telegram username, with at least one of the three always required.
+- Usernames accept `A-Z`, `a-z`, `0-9`, and `_` up to 64 characters. A single
+  leading `@` is ignored for storage and lookup.
+- Entered capitalization is retained for display, but username lookup and
+  uniqueness are case-insensitive. `Safin_Ahmed`, `safin_ahmed`, and
+  `SAFIN_AHMED` are the same alias on one platform.
+- WhatsApp and Telegram uniqueness are independent, so the same text may be
+  owned once on each platform. A duplicate within one platform is rejected;
+  customers are never merged automatically.
+- `/managecustomer` adds, changes, or removes aliases. Confirmations are bound
+  to the exact current value so a concurrent change cannot be overwritten.
+- Identity changes do not create reward transactions or change balances,
+  history, receipts, or leaderboard totals.
+
 Example:
 
 ```text
@@ -150,7 +171,8 @@ balance/value. These customer-facing labels do not change reward calculations.
 - Available monthly views are the running month and the previous completed month.
 - `PURCHASE` and `MANUAL_ADD` contribute positive gross earned point units. `REDEEM` never changes leaderboard earnings.
 - Rankings use exact `earned_point_units DESC`, then the earliest qualifying earning timestamp, then `customer_id ASC`.
-- Results show normalized phone numbers, never customer names, and are limited to 10 entries.
+- Results show the customer's available primary identifier (phone first, then
+  WhatsApp username, then Telegram username) and are limited to 10 entries.
 - Display uses deterministic two-decimal rounding, while storage remains exact integer point units with four-decimal point precision.
 - Weekly and monthly resets are independent. A reset starts a new generation/cutoff for only the current period; balances and detailed history do not change.
 
@@ -165,6 +187,7 @@ balance/value. These customer-facing labels do not change reward calculations.
 | `/balance` | Check the latest balance |
 | `/history` | View newest-first reward history |
 | `/addcustomer` | Register a zero-point customer |
+| `/managecustomer` | Add, change, or remove a customer's current identifiers |
 | `/export` | Export customers and/or transactions |
 | `/leaderboard` | View weekly/monthly rankings or reset the current period |
 | `/restart` | Restart the active workflow |
@@ -212,7 +235,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.5 release guide](docs/V2.0.5-RELEASE.md).
+[V2.0.6 release guide](docs/V2.0.6-RELEASE.md).
 
 ## Security summary
 

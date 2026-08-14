@@ -7,7 +7,9 @@ export interface TransactionPage {
 }
 
 export interface ExportTransaction extends RewardTransaction {
-  whatsappNumber: string;
+  whatsappNumber: string | null;
+  whatsappUsername: string | null;
+  telegramUsername: string | null;
 }
 
 export class TransactionRepository {
@@ -127,7 +129,7 @@ export class TransactionRepository {
   async listAll(limit: number): Promise<ExportTransaction[]> {
     const result = await this.db
       .prepare(
-        `SELECT t.*, c.whatsapp_number
+        `SELECT t.*, c.whatsapp_number, c.whatsapp_username, c.telegram_username
          FROM transactions t
          JOIN customers c ON c.id = t.customer_id
          ORDER BY t.id ASC
@@ -137,12 +139,29 @@ export class TransactionRepository {
       .all();
     return result.results.map((value: unknown) => {
       const transaction = mapTransaction(value);
-      if (typeof value !== "object" || value === null || !("whatsapp_number" in value)) {
+      if (
+        typeof value !== "object"
+        || value === null
+        || !("whatsapp_number" in value)
+        || !("whatsapp_username" in value)
+        || !("telegram_username" in value)
+      ) {
         throw new Error("Invalid transaction export row.");
       }
       const phone = value.whatsapp_number;
-      if (typeof phone !== "string") throw new Error("Invalid transaction export row.");
-      return { ...transaction, whatsappNumber: phone };
+      const whatsappUsername = value.whatsapp_username;
+      const telegramUsername = value.telegram_username;
+      if (
+        (phone !== null && typeof phone !== "string")
+        || (whatsappUsername !== null && typeof whatsappUsername !== "string")
+        || (telegramUsername !== null && typeof telegramUsername !== "string")
+      ) throw new Error("Invalid transaction export row.");
+      return {
+        ...transaction,
+        whatsappNumber: phone,
+        whatsappUsername,
+        telegramUsername
+      };
     });
   }
 }

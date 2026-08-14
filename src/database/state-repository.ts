@@ -44,17 +44,16 @@ export class StateRepository {
         `INSERT INTO conversation_states (
            administrator_telegram_id, operation_started_update_id,
            active_operation, current_step, selection_mode,
-           selected_customer_id, selected_whatsapp_number, search_digits, search_page,
+           selected_customer_id, search_query, search_page,
            payload_json, created_at_utc, updated_at_utc, expires_at_utc
-         ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, 0, ?, ?, ?, ?)
+         ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, ?)
          ON CONFLICT(administrator_telegram_id) DO UPDATE SET
            operation_started_update_id = excluded.operation_started_update_id,
            active_operation = excluded.active_operation,
            current_step = excluded.current_step,
            selection_mode = NULL,
            selected_customer_id = NULL,
-           selected_whatsapp_number = NULL,
-           search_digits = NULL,
+           search_query = NULL,
            search_page = 0,
            payload_json = excluded.payload_json,
            created_at_utc = excluded.created_at_utc,
@@ -83,8 +82,8 @@ export class StateRepository {
       .prepare(
         `UPDATE conversation_states SET
            active_operation = ?, current_step = ?, selection_mode = ?,
-           selected_customer_id = ?, selected_whatsapp_number = ?, search_digits = ?,
-           search_page = ?, payload_json = ?, updated_at_utc = ?, expires_at_utc = ?
+           selected_customer_id = ?, search_query = ?, search_page = ?,
+           payload_json = ?, updated_at_utc = ?, expires_at_utc = ?
          WHERE administrator_telegram_id = ?`
       )
       .bind(
@@ -92,8 +91,7 @@ export class StateRepository {
         state.currentStep,
         state.selectionMode,
         state.selectedCustomerId,
-        state.selectedWhatsappNumber,
-        state.searchDigits,
+        state.searchQuery,
         state.searchPage,
         JSON.stringify(state.payload),
         now,

@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-V2.0.5 uses a hybrid message model to reduce clutter without making
+V2.0.6 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
@@ -10,15 +10,15 @@ the generated heading remains `SoulShop Rewards Point System`.
 
 ## Customer-selection context
 
-- Record Purchase, Add Points Manually, Redeem Points, Check Balance, and
-  Customer History selection panels show the active operation as a bold,
+- Record Purchase, Add Points Manually, Redeem Points, Check Balance, Customer
+  History, and Manage Customer Identities selection panels show the active operation as a bold,
   emoji-prefixed heading between the configured application heading and
   `Select a customer:`.
 - Record Purchase uses the `🛍️` emoji on the dashboard, selection heading, and
   customer-actions panel.
-- After `Search by Last Digits` or `Enter Full Number` is selected, the next
-  panel starts with `Selected Operation: {emoji} {operation}`, followed by one
-  blank line and the relevant number-entry prompt.
+- Search options include WhatsApp last 4/5 digits, full WhatsApp number, exact
+  WhatsApp username, and exact Telegram username. Each input panel starts with
+  `Selected Operation: {emoji} {operation}`.
 - The suffix prompt is exactly:
 
   ```text
@@ -33,9 +33,29 @@ the generated heading remains `SoulShop Rewards Point System`.
   Spaces and hyphens are accepted.
   ```
 
-- The Add New Customer prompt is separate and remains unchanged.
+- Add New Customer first asks for an initial identifier type, then validates and
+  confirms that phone or username before creating the zero-point customer.
 - Dashboard callbacks, matching slash commands, and `/restart` use the same
   operation-aware selection panel.
+
+## Customer identity management
+
+- `/managecustomer` and the customer-actions panel open the same identity
+  manager after the D1 customer ID is selected.
+- One current WhatsApp phone, WhatsApp username, and Telegram username may be
+  attached to a customer. At least one must remain.
+- A single leading `@` is discarded from username input. Display capitalization
+  is preserved, while exact lookup and uniqueness are case-insensitive.
+- A change/removal confirmation stores the exact current value it displayed.
+  The SQL update includes that expected value, so a later or concurrent edit is
+  rejected as stale rather than overwritten.
+- Duplicate aliases return to a usable management panel and do not merge
+  customers. Invalid values remain at input. The last alias cannot reach a
+  removal mutation.
+- A committed identity change is harmless to retry: if Telegram display fails,
+  the repository recognizes that the requested value is already current.
+- Identity management changes only alias columns and `updated_at_utc`; reward
+  balances, transactions, receipts, and leaderboard aggregates are untouched.
 
 ## Latest earning transaction context
 

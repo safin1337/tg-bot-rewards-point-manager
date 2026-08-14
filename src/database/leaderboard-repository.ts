@@ -157,6 +157,8 @@ export class LeaderboardRepository {
         `SELECT
            aggregate_row.customer_id,
            customer.whatsapp_number,
+           customer.whatsapp_username,
+           customer.telegram_username,
            aggregate_row.earned_point_units,
            aggregate_row.first_qualifying_earning_at_utc
          FROM leaderboard_periods AS period

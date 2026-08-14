@@ -41,13 +41,15 @@ describe("Telegram CSV export service", () => {
 
     expect(customerFile.filename).toMatch(/^soulshop-customers-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(customerFile.contents).toContain(
-      "customer_id,whatsapp_number,current_points,point_balance_units,rounded_reward_bdt,created_at_utc,created_at_dhaka,updated_at_utc,updated_at_dhaka"
+      "customer_id,whatsapp_number,whatsapp_username,telegram_username,current_points,point_balance_units,rounded_reward_bdt,created_at_utc,created_at_dhaka,updated_at_utc,updated_at_dhaka"
     );
     expect(customerFile.contents).toContain("'+8801712345678");
     expect(customerFile.contents).toContain("1.2345");
 
     expect(transactionFile.filename).toMatch(/^soulshop-transactions-\d{4}-\d{2}-\d{2}\.csv$/);
-    expect(transactionFile.contents).toContain("transaction_id,customer_id,whatsapp_number,transaction_type");
+    expect(transactionFile.contents).toContain(
+      "transaction_id,customer_id,whatsapp_number,whatsapp_username,telegram_username,transaction_type"
+    );
     expect(transactionFile.contents).toContain("points_delta_units");
     expect(transactionFile.contents).toContain("telegram_update_id,created_at_utc,created_at_dhaka");
     expect(transactionFile.contents).toContain("1.2345");

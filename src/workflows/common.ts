@@ -11,7 +11,13 @@ import {
   resultsKeyboard,
   selectionKeyboard
 } from "../telegram/keyboards";
-import { BRAND, historyMessage, leaderboardMenuMessage, selectionMessage } from "../telegram/messages";
+import {
+  BRAND,
+  earningEntryPromptMessage,
+  historyMessage,
+  leaderboardMenuMessage,
+  selectionMessage
+} from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { WorkflowContext } from "./context";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
@@ -110,6 +116,7 @@ export const promptAfterSelection = async (
 ): Promise<void> => {
   const base = `✅ Taking entry for ${escapeHtml(customer.whatsappNumber)}`;
   if (state.activeOperation === "PURCHASE") {
+    const latestTransaction = await context.transactions.findLatestEarningForCustomer(customer.id);
     await context.states.save({
       ...state,
       currentStep: "AWAIT_PURCHASE_AMOUNT",
@@ -120,13 +127,14 @@ export const promptAfterSelection = async (
     await display(
       context,
       chatId,
-      `${base}\n\nEnter the purchase amount in BDT.`,
+      earningEntryPromptMessage(customer, "PURCHASE", latestTransaction),
       backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search"),
       target
     );
     return;
   }
   if (state.activeOperation === "MANUAL_ADD") {
+    const latestTransaction = await context.transactions.findLatestEarningForCustomer(customer.id);
     await context.states.save({
       ...state,
       currentStep: "AWAIT_POINT_AMOUNT",
@@ -137,7 +145,7 @@ export const promptAfterSelection = async (
     await display(
       context,
       chatId,
-      `${base}\n\nEnter the number of points you want to add.`,
+      earningEntryPromptMessage(customer, "MANUAL_ADD", latestTransaction),
       backCancelKeyboard(state.payload.token, "s", "⬅️ Back to Customer Search"),
       target
     );

@@ -183,6 +183,14 @@ Record Purchase uses the `🛍️` emoji. After `Search by Last Digits` or `Ente
 Full Number` is selected, the number-entry prompt repeats the active operation
 above its instructions. Customer-search navigation uses the compact
 `⬅️ Back` label.
+
+After a customer is selected for Record Purchase or Add Points, the amount-entry
+panel shows the newest retained earning transaction (`PURCHASE` or
+`MANUAL_ADD`) and skips redemptions. Purchase entries include the purchase
+amount; manual additions include the safely escaped reason when present. If no
+eligible row exists among the customer's retained newest 40 transactions, the
+panel shows `No Prior Data Found!`. This is a read-only display and does not
+change the customer's balance or history.
 See [the active-message workflow contract](docs/TELEGRAM-WORKFLOWS.md).
 
 ## Installation and deployment

@@ -342,8 +342,8 @@ Using only the configured administrator account:
 2. Record Purchase uses `🛍️`, and Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. Selecting `Search by Last Digits` or `Enter Full Number` repeats the selected operation above the approved number-entry copy, and customer-search screens use the compact `⬅️ Back` button.
 4. `/addcustomer` retains its existing Add New Customer prompt, normalizes a Bangladesh or E.164 number, and creates zero points.
-5. `/purchase` finds the customer by four or five final digits, rejects decimal BDT input, and follows the active centralized mode. With the V2.0.5 bracketed mode, verify 2,000/2,001, 4,000/4,001, 6,000/6,001, and 25,000/25,001 boundaries plus the configured floor behavior. In an isolated flat-mode test, BDT 50 records exactly 1 point and BDT 500 records exactly 10 points.
-6. `/addpoints` adds a fractional value, safely displays an HTML-like note, and labels the resulting total as the updated reward balance.
+5. `/purchase` finds the customer by four or five final digits, shows the newest retained purchase or manual addition while skipping redemptions, rejects decimal BDT input, and follows the active centralized mode. Verify that a displayed purchase includes its purchase amount and that a customer without eligible retained data shows `No Prior Data Found!`. With the V2.0.5 bracketed mode, verify 2,000/2,001, 4,000/4,001, 6,000/6,001, and 25,000/25,001 boundaries plus the configured floor behavior. In an isolated flat-mode test, BDT 50 records exactly 1 point and BDT 500 records exactly 10 points.
+6. `/addpoints` shows the same newest retained earning context, including a safely escaped manual-add reason when present, then adds a fractional value and labels the resulting total as the updated reward balance.
 7. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values. Verify that `Redeem All Points` still requires confirmation and reduces an exact balance with hidden third/fourth decimal precision to `0.00` without an insufficient-balance error.
 8. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
 9. `/history` shows newest-first entries in Asia/Dhaka time.
@@ -390,6 +390,12 @@ npx wrangler d1 execute soulshop-rewards-db `
 ```
 
 Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention atomically removes rows beyond the newest 40 per customer and their matching completed receipts. The customer mutation update-ID high-water mark preserves delayed-update protection. Leaderboard aggregates are independent of detailed history.
+
+The Record Purchase and Add Points amount-entry panels perform one read-only
+lookup for the newest retained `PURCHASE` or `MANUAL_ADD`; they skip `REDEEM`.
+Because only 40 detailed rows are retained per customer, a customer whose
+retained rows contain only redemptions displays `No Prior Data Found!` even if
+an older earning transaction once existed.
 
 Database table and invariant details are documented in [DATABASE.md](DATABASE.md).
 

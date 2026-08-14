@@ -44,6 +44,19 @@ All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are docum
 - Replaced the Record Purchase cart emoji with `🛍️` across the dashboard,
   operation headings, customer actions, and current documentation.
 
+### Latest earning transaction context
+
+- Record Purchase and Add Points amount-entry panels now show the customer's
+  newest retained `PURCHASE` or `MANUAL_ADD` transaction while skipping newer
+  `REDEEM` entries.
+- Added the Asia/Dhaka transaction time, two-decimal earned points, purchase
+  amount for purchases, and HTML-escaped reason for manual additions when one
+  exists. Customers without an eligible retained entry show
+  `No Prior Data Found!`.
+- The lookup is read-only and bounded by the existing newest-40 transaction
+  retention. It adds no table, column, migration, backfill, or production-data
+  rewrite.
+
 ### Back navigation
 
 - Added a tokenized `Back` action below the first operation level while keeping

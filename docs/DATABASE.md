@@ -109,6 +109,14 @@ History pages and transaction CSV exports contain only retained detail. A
 protected pre-pruning external backup is the only way to preserve older
 detailed history.
 
+The Record Purchase and Add Points amount-entry panels use a read-only query on
+`transactions` for the newest `PURCHASE` or `MANUAL_ADD`, ordered by
+`created_at_utc DESC, id DESC`, with `LIMIT 1`. This skips `REDEEM` without
+creating a table, column, summary row, or write. The existing customer/time
+index and newest-40 retention bound the work. If all retained detail for a
+customer is redemption data, the panel reports `No Prior Data Found!`; it does
+not infer or reconstruct older pruned history.
+
 ## Leaderboard aggregates and reset receipts
 
 Weekly keys are Monday dates in `Asia/Dhaka`; monthly keys are `YYYY-MM`.

@@ -93,6 +93,12 @@ These rules are mandatory for every future coding agent working in this reposito
 - Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning atomically removes rows beyond the newest 40 per customer and their corresponding completed mutation receipts.
 - Never manually delete retained transaction rows without deleting their corresponding completed mutation receipts in the same reviewed D1 batch.
 - The newest-40 limit applies across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined. Customer balances and leaderboard aggregates must never depend on retained detailed rows.
+- Record Purchase and Add Points amount-entry prompts show the newest retained
+  `PURCHASE` or `MANUAL_ADD`, ordered by `created_at_utc DESC, id DESC`, while
+  skipping `REDEEM`. Show the purchase amount for purchases, show the escaped
+  note for manual additions when present, and use the exact fallback
+  `No Prior Data Found!` when no eligible retained row exists. This context is
+  informational and must never affect balances, mutations, or retention.
 - Completed mutation receipts are bounded to the receipts corresponding to each customer's retained newest 40 transactions. Preserve the per-customer mutation update-ID high-water mark so a pruned delayed update cannot mutate a balance.
 - Retain leaderboard reset receipts only when they are both within the two-calendar-month UTC window and within the latest 40 overall, ordered by timestamp then Telegram update ID descending.
 - Preserve genuinely active processed-update leases. Bound eligible non-active processed updates to records both within the two-calendar-month UTC window and within the latest 40 overall.

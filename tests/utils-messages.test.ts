@@ -5,6 +5,7 @@ import { dhakaDate, formatDhakaDateTime } from "../src/utils/time";
 import {
   addCustomerSuccessMessage,
   balanceMessage,
+  earningEntryPromptMessage,
   fullNumberSearchPrompt,
   historyMessage,
   manualAddSuccessMessage,
@@ -55,6 +56,14 @@ const transaction: RewardTransaction = {
   note: "<private & note>",
   telegramUpdateId: 10,
   createdAtUtc: "2026-07-29T09:30:00.000Z"
+};
+
+const latestPurchase: RewardTransaction = {
+  ...transaction,
+  purchaseAmountBdt: 550,
+  pointsDeltaUnits: 110_000,
+  balanceAfterUnits: 110_000,
+  createdAtUtc: "2026-08-10T12:27:00.000Z"
 };
 
 describe("CSV security and correctness", () => {
@@ -120,6 +129,52 @@ describe("required branded messages", () => {
       + "Enter the full WhatsApp number.\n"
       + "Spaces and hyphens are accepted."
     );
+  });
+
+  it("shows the latest purchase above the purchase amount prompt", () => {
+    expect(earningEntryPromptMessage(customer, "PURCHASE", latestPurchase)).toBe(
+      "✅ <b>Taking entry for +8801712345678</b>\n\n"
+      + "Latest Transaction:\n"
+      + "<b>10 Aug 2026, 06:27 PM</b>\n"
+      + "PURCHASE: +11.00 points\n"
+      + "Purchase Amount: BDT 550\n\n"
+      + "Enter the purchase amount in BDT."
+    );
+  });
+
+  it("shows an escaped manual-add reason above the Add Points prompt", () => {
+    const manualAddition: RewardTransaction = {
+      ...latestPurchase,
+      transactionType: "MANUAL_ADD",
+      purchaseAmountBdt: null,
+      note: "<campaign & bonus>"
+    };
+    expect(earningEntryPromptMessage(customer, "MANUAL_ADD", manualAddition)).toBe(
+      "✅ <b>Taking entry for +8801712345678</b>\n\n"
+      + "Latest Transaction:\n"
+      + "<b>10 Aug 2026, 06:27 PM</b>\n"
+      + "MANUAL_ADD: +11.00 points\n"
+      + "Reason: &lt;campaign &amp; bonus&gt;\n\n"
+      + "Enter the number of points you want to add."
+    );
+  });
+
+  it("shows the exact no-prior-data fallback for a new customer", () => {
+    expect(earningEntryPromptMessage(customer, "PURCHASE", null)).toBe(
+      "✅ <b>Taking entry for +8801712345678</b>\n\n"
+      + "Latest Transaction:\n"
+      + "No Prior Data Found!\n\n"
+      + "Enter the purchase amount in BDT."
+    );
+  });
+
+  it("rejects a redemption passed to the latest earning formatter", () => {
+    expect(() => earningEntryPromptMessage(customer, "PURCHASE", {
+      ...latestPurchase,
+      transactionType: "REDEEM",
+      purchaseAmountBdt: null,
+      pointsDeltaUnits: -10_000
+    })).toThrow(/cannot be a redemption/i);
   });
 
   it("purchase includes headline, Congratulations, updated balance labels, and all taglines", () => {

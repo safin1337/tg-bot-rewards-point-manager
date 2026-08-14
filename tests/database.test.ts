@@ -210,6 +210,58 @@ describe("atomic reward mutations and idempotency", () => {
     expect(page.transactions[1]?.note).toBe("<safe at display>");
   });
 
+  it("returns the newest retained purchase or manual addition while skipping redemptions", async () => {
+    const created = await customers().createZeroBalance(
+      normalizePhone("01712345678"),
+      1,
+      "2026-08-10T12:00:00.000Z"
+    );
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-10T12:27:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "PURCHASE",
+      pointUnits: purchaseToPointUnits(550),
+      purchaseAmountBdt: 550,
+      note: null,
+      telegramUpdateId: 520,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-10T13:27:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 20_000,
+      purchaseAmountBdt: null,
+      note: "campaign",
+      telegramUpdateId: 521,
+      expectedBalanceUnits: 110_000
+    });
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-11T10:11:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 522,
+      expectedBalanceUnits: 130_000
+    });
+
+    expect(await transactions().findLatestEarningForCustomer(created.customer.id)).toMatchObject({
+      transactionType: "MANUAL_ADD",
+      pointsDeltaUnits: 20_000,
+      note: "campaign",
+      telegramUpdateId: 521
+    });
+    expect(await transactions().findLatestEarningForCustomer(created.customer.id + 1)).toBeNull();
+  });
+
   it("prevents insufficient redemption and inserts no history", async () => {
     const created = await customers().createZeroBalance(
       normalizePhone("01712345678"),

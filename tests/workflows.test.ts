@@ -221,6 +221,9 @@ describe("stateful customer search and purchase", () => {
       callback(17, 123456789, `sel:${newSearch?.payload.token ?? ""}:${created.customer.id}`)
     );
     expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_PURCHASE_AMOUNT");
+    expect(calls.some((call) => String(call.payload?.text).includes(
+      "Latest Transaction:\nNo Prior Data Found!\n\nEnter the purchase amount in BDT."
+    ))).toBe(true);
 
     await processTelegramUpdate(context, message(18, 123456789, "500"));
     const confirmation = (await context.states.get("123456789")).state;
@@ -270,6 +273,115 @@ describe("stateful customer search and purchase", () => {
     );
     expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(100_000);
     expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions).toHaveLength(1);
+  });
+
+  it("shows the latest purchase on Record Purchase while skipping a newer redemption", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01777622294"),
+      200,
+      "2026-08-10T12:00:00.000Z"
+    );
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-10T12:27:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "PURCHASE",
+      pointUnits: 110_000,
+      purchaseAmountBdt: 550,
+      note: null,
+      telegramUpdateId: 201,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-11T10:11:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 202,
+      expectedBalanceUnits: 110_000
+    });
+
+    await processTelegramUpdate(context, message(203, 123456789, "/purchase"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(204, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(205, 123456789, "01777622294"));
+
+    const amountPrompt = calls.filter((call) =>
+      String(call.payload?.text).includes("Enter the purchase amount in BDT.")
+    ).at(-1);
+    expect(amountPrompt?.payload?.text).toBe(
+      "✅ <b>Taking entry for +8801777622294</b>\n\n"
+      + "Latest Transaction:\n"
+      + "<b>10 Aug 2026, 06:27 PM</b>\n"
+      + "PURCHASE: +11.00 points\n"
+      + "Purchase Amount: BDT 550\n\n"
+      + "Enter the purchase amount in BDT."
+    );
+    state = (await context.states.get("123456789")).state;
+    expect(state?.currentStep).toBe("AWAIT_PURCHASE_AMOUNT");
+  });
+
+  it("shows the latest manual addition and escaped reason on Add Points", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01777622294"),
+      210,
+      "2026-08-10T12:00:00.000Z"
+    );
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-10T12:27:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 110_000,
+      purchaseAmountBdt: null,
+      note: "<campaign & bonus>",
+      telegramUpdateId: 211,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-11T10:11:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 212,
+      expectedBalanceUnits: 110_000
+    });
+
+    await processTelegramUpdate(context, message(213, 123456789, "/addpoints"));
+    const state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(214, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(215, 123456789, "01777622294"));
+
+    const amountPrompt = calls.filter((call) =>
+      String(call.payload?.text).includes("Enter the number of points you want to add.")
+    ).at(-1);
+    expect(amountPrompt?.payload?.text).toBe(
+      "✅ <b>Taking entry for +8801777622294</b>\n\n"
+      + "Latest Transaction:\n"
+      + "<b>10 Aug 2026, 06:27 PM</b>\n"
+      + "MANUAL_ADD: +11.00 points\n"
+      + "Reason: &lt;campaign &amp; bonus&gt;\n\n"
+      + "Enter the number of points you want to add."
+    );
+    expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_POINT_AMOUNT");
   });
 
   it.each([
@@ -376,7 +488,9 @@ describe("stateful customer search and purchase", () => {
     );
     expect((await context.states.get("123456789")).state?.selectedCustomerId).toBe(created.customer.id);
     expect(calls.some((call) =>
-      String(call.payload?.text).startsWith("✅ Taking entry for +8801712344567")
+      String(call.payload?.text).startsWith(
+        "✅ <b>Taking entry for +8801712344567</b>\n\nLatest Transaction:\nNo Prior Data Found!"
+      )
     )).toBe(true);
   });
 

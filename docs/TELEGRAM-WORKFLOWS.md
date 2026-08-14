@@ -37,6 +37,20 @@ the generated heading remains `SoulShop Rewards Point System`.
 - Dashboard callbacks, matching slash commands, and `/restart` use the same
   operation-aware selection panel.
 
+## Latest earning transaction context
+
+- After customer selection, the Record Purchase and Add Points amount-entry
+  panels load the newest retained `PURCHASE` or `MANUAL_ADD`, ordered by
+  `created_at_utc DESC, id DESC`. `REDEEM` rows are skipped.
+- The display uses Asia/Dhaka time and two-decimal point formatting. A purchase
+  shows `Purchase Amount: BDT {amount}`. A manual addition shows
+  `Reason: {note}` when a note exists, with the note HTML-escaped.
+- If no eligible retained row exists, the exact text is
+  `No Prior Data Found!`.
+- The lookup is read-only and limited to the existing newest 40 retained
+  transactions. It never changes a balance, creates a transaction, or affects
+  confirmation and mutation rules.
+
 ## Point display
 
 - Every Telegram-visible point amount uses exactly two decimal places.

@@ -21,6 +21,28 @@ export class TransactionRepository {
     return row === null ? null : mapTransaction(row);
   }
 
+  async findLatestEarningForCustomer(customerId: number): Promise<RewardTransaction | null> {
+    if (!Number.isSafeInteger(customerId) || customerId <= 0) {
+      throw new Error("Invalid customer ID.");
+    }
+    const row = await this.db
+      .prepare(
+        `SELECT * FROM transactions
+         WHERE customer_id = ?
+           AND transaction_type IN ('PURCHASE', 'MANUAL_ADD')
+         ORDER BY created_at_utc DESC, id DESC
+         LIMIT 1`
+      )
+      .bind(customerId)
+      .first();
+    if (row === null) return null;
+    const transaction = mapTransaction(row);
+    if (transaction.transactionType === "REDEEM") {
+      throw new Error("Invalid latest earning transaction.");
+    }
+    return transaction;
+  }
+
   insertStatement(values: {
     customerId: number;
     transactionType: TransactionType;

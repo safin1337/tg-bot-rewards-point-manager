@@ -71,6 +71,35 @@ export const fullNumberSearchPrompt = (operation: CustomerSelectionOperation): s
     "Enter the full WhatsApp number.\nSpaces and hyphens are accepted."
   );
 
+export const earningEntryPromptMessage = (
+  customer: Customer,
+  operation: "PURCHASE" | "MANUAL_ADD",
+  latestTransaction: RewardTransaction | null
+): string => {
+  if (latestTransaction?.transactionType === "REDEEM") {
+    throw new Error("Latest earning transaction cannot be a redemption.");
+  }
+  let latestDetails = "No Prior Data Found!";
+  if (latestTransaction !== null) {
+    const date = `<b>${escapeHtml(formatDhakaDateTime(latestTransaction.createdAtUtc))}</b>`;
+    const points = `+${formatPointUnitsForDisplay(latestTransaction.pointsDeltaUnits)} points`;
+    if (latestTransaction.transactionType === "PURCHASE") {
+      if (latestTransaction.purchaseAmountBdt === null) {
+        throw new Error("Latest purchase amount is missing.");
+      }
+      latestDetails = `${date}\nPURCHASE: ${points}\nPurchase Amount: BDT ${latestTransaction.purchaseAmountBdt}`;
+    } else {
+      latestDetails = `${date}\nMANUAL_ADD: ${points}${latestTransaction.note === null
+        ? ""
+        : `\nReason: ${escapeHtml(latestTransaction.note)}`}`;
+    }
+  }
+  const instruction = operation === "PURCHASE"
+    ? "Enter the purchase amount in BDT."
+    : "Enter the number of points you want to add.";
+  return `✅ <b>Taking entry for ${escapeHtml(customer.whatsappNumber)}</b>\n\nLatest Transaction:\n${latestDetails}\n\n${instruction}`;
+};
+
 const gcd = (left: bigint, right: bigint): bigint => {
   let a = left;
   let b = right;

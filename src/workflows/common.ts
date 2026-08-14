@@ -1,12 +1,14 @@
 import { formatPointUnitsForDisplay } from "../domain/points";
 import { roundRewardBdt, safeBalanceAfter } from "../domain/rewards";
 import type { ConversationState, Customer, Operation } from "../types/models";
+import { customerPrimaryLabel } from "../domain/customer-identity";
 import {
   backCancelKeyboard,
-  cancelKeyboard,
+  addCustomerIdentityKeyboard,
   exportKeyboard,
   historyKeyboard,
   leaderboardMenuKeyboard,
+  manageCustomerKeyboard,
   redeemAmountKeyboard,
   resultsKeyboard,
   selectionKeyboard
@@ -16,6 +18,7 @@ import {
   earningEntryPromptMessage,
   historyMessage,
   leaderboardMenuMessage,
+  manageCustomerMessage,
   selectionMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
@@ -49,13 +52,14 @@ export const operationFromCode = (code: string): Operation | null => {
     case "A": return "ADD_CUSTOMER";
     case "E": return "EXPORT";
     case "L": return "LEADERBOARD";
+    case "U": return "MANAGE_CUSTOMER";
     default: return null;
   }
 };
 
 export const firstStepFor = (operation: Operation) =>
   operation === "ADD_CUSTOMER"
-    ? "AWAIT_ADD_CUSTOMER_NUMBER" as const
+    ? "SELECT_ADD_CUSTOMER_IDENTITY" as const
     : operation === "EXPORT"
       ? "SELECT_EXPORT" as const
       : operation === "LEADERBOARD"
@@ -75,8 +79,8 @@ export const startOperation = async (
     await display(
       context,
       chatId,
-      `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nEnter the customer's WhatsApp number.\nSpaces and hyphens are accepted.`,
-      cancelKeyboard(),
+      `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nChoose the customer's initial identifier:`,
+      addCustomerIdentityKeyboard(state.payload.token),
       target
     );
   } else if (operation === "EXPORT") {
@@ -114,14 +118,30 @@ export const promptAfterSelection = async (
   chatId: number,
   target: ActiveMessageTarget | null = null
 ): Promise<void> => {
-  const base = `✅ Taking entry for ${escapeHtml(customer.whatsappNumber)}`;
+  const base = `✅ Taking entry for ${escapeHtml(customerPrimaryLabel(customer))}`;
+  if (state.activeOperation === "MANAGE_CUSTOMER") {
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "MANAGE_CUSTOMER",
+      selectedCustomerId: customer.id,
+      searchPage: 0,
+      payload: { token: state.payload.token }
+    });
+    await display(
+      context,
+      chatId,
+      manageCustomerMessage(customer),
+      manageCustomerKeyboard(customer, saved.payload.token),
+      target
+    );
+    return;
+  }
   if (state.activeOperation === "PURCHASE") {
     const latestTransaction = await context.transactions.findLatestEarningForCustomer(customer.id);
     await context.states.save({
       ...state,
       currentStep: "AWAIT_PURCHASE_AMOUNT",
       selectedCustomerId: customer.id,
-      selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
     await display(
@@ -139,7 +159,6 @@ export const promptAfterSelection = async (
       ...state,
       currentStep: "AWAIT_POINT_AMOUNT",
       selectedCustomerId: customer.id,
-      selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
     await display(
@@ -156,7 +175,6 @@ export const promptAfterSelection = async (
       ...state,
       currentStep: "AWAIT_POINT_AMOUNT",
       selectedCustomerId: customer.id,
-      selectedWhatsappNumber: customer.whatsappNumber,
       payload: { token: state.payload.token }
     });
     await display(
@@ -179,7 +197,6 @@ export const promptAfterSelection = async (
       ...state,
       currentStep: "SHOW_HISTORY",
       selectedCustomerId: customer.id,
-      selectedWhatsappNumber: customer.whatsappNumber,
       searchPage: 0,
       payload: { token: state.payload.token }
     });
@@ -194,21 +211,20 @@ export const showSearchResults = async (
   page: number,
   target: ActiveMessageTarget | null = null
 ): Promise<void> => {
-  if (state.searchDigits === null) throw new Error("Search state is incomplete.");
-  const result = await context.customers.searchBySuffix(state.searchDigits, page);
+  if (state.searchQuery === null) throw new Error("Search state is incomplete.");
+  const result = await context.customers.searchBySuffix(state.searchQuery, page);
   const saved = await context.states.save({
     ...state,
     currentStep: "SHOW_RESULTS",
     searchPage: page,
     selectedCustomerId: null,
-    selectedWhatsappNumber: null
   });
   if (result.customers.length === 0) {
     const { noResultsKeyboard } = await import("../telegram/keyboards");
     await display(
       context,
       chatId,
-      `${BRAND}\n\nNo customer was found ending in ${escapeHtml(state.searchDigits)}.`,
+      `${BRAND}\n\nNo customer was found ending in ${escapeHtml(state.searchQuery)}.`,
       noResultsKeyboard(saved.payload.token),
       target
     );
@@ -252,7 +268,7 @@ export const purchaseConfirmation = (
 
 <b>Confirm Purchase</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Purchase Amount: BDT ${amount}
 Points Earned: ${formatPointUnitsForDisplay(units)} points
 Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
@@ -272,7 +288,7 @@ export const pointConfirmation = (
 
 <b>Confirm ${operation === "REDEEM" ? "Redemption" : "Manual Point Addition"}</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Points ${operation === "REDEEM" ? "to Redeem" : "to Add"}: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : `\nReason: ${escapeHtml(note)}`}
 Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 New Points: ${formatPointUnitsForDisplay(after)} points

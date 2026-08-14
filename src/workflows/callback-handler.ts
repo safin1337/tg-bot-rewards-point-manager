@@ -1,11 +1,19 @@
 import { DomainError } from "../domain/errors";
 import { normalizePhone } from "../domain/phone";
+import {
+  customerIdentifierValue,
+  identifierDisplayValue,
+  identifierTypeLabel,
+  normalizeUsername,
+  type CustomerIdentifierInput,
+  type CustomerIdentifierType
+} from "../domain/customer-identity";
 import { leaderboardPeriods } from "../domain/leaderboard";
 import { EARNING_POLICY_ID } from "../domain/rewards";
 import { newStateToken } from "../database/state-repository";
 import {
   backCancelKeyboard,
-  cancelKeyboard,
+  addCustomerIdentityKeyboard,
   customerActionsKeyboard,
   dashboardKeyboard,
   confirmKeyboard,
@@ -13,6 +21,8 @@ import {
   leaderboardPeriodsKeyboard,
   leaderboardResetKeyboard,
   leaderboardResultKeyboard,
+  identityRemoveConfirmKeyboard,
+  manageCustomerKeyboard,
   selectionKeyboard,
   skipNoteKeyboard
 } from "../telegram/keyboards";
@@ -26,11 +36,15 @@ import {
   leaderboardMessage,
   leaderboardResetConfirmationMessage,
   leaderboardResetSuccessMessage,
+  identityChangeSuccessMessage,
+  identityRemoveConfirmationMessage,
+  manageCustomerMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage,
   selectionMessage,
-  suffixSearchPrompt
+  suffixSearchPrompt,
+  usernameSearchPrompt
 } from "../telegram/messages";
 import type { ConversationState, LeaderboardPeriodType } from "../types/models";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
@@ -86,9 +100,46 @@ const stateForToken = async (
   return result.state;
 };
 
-const selectMatchesCurrentSearch = (state: ConversationState, phone: string): boolean => {
-  if (state.searchDigits === null) return false;
-  return phone.endsWith(state.searchDigits);
+const selectMatchesCurrentSearch = (state: ConversationState, phone: string | null): boolean => {
+  if (state.searchQuery === null || phone === null || state.selectionMode !== "PHONE_SUFFIX") return false;
+  return phone.endsWith(state.searchQuery);
+};
+
+const identifierTypeFromCode = (code: string): CustomerIdentifierType | null => {
+  switch (code) {
+    case "p": return "WHATSAPP_PHONE";
+    case "w": return "WHATSAPP_USERNAME";
+    case "t": return "TELEGRAM_USERNAME";
+    default: return null;
+  }
+};
+
+const identifierFromStoredValue = (
+  type: CustomerIdentifierType,
+  value: string
+): CustomerIdentifierInput => type === "WHATSAPP_PHONE"
+  ? { type, phone: normalizePhone(value) }
+  : { type, username: normalizeUsername(value) };
+
+const identifierInputPrompt = (type: CustomerIdentifierType, addingCustomer: boolean): string => {
+  const action = addingCustomer ? "Add New Customer" : `Add or Change ${identifierTypeLabel(type)}`;
+  const instruction = type === "WHATSAPP_PHONE"
+    ? "Enter the customer's WhatsApp number.\nSpaces and supported dash characters are accepted."
+    : `Enter the customer's ${identifierTypeLabel(type).toLowerCase()}.\nA leading @ is optional. Use only A-Z, a-z, 0-9, and underscore (maximum 64 characters).`;
+  return `${BRAND}\n\n➕ <b>${action}</b>\n\n${instruction}`;
+};
+
+const identityFailureMessage = (error: DomainError): string => {
+  switch (error.code) {
+    case "IDENTIFIER_CONFLICT":
+      return "⚠️ That identifier now belongs to another customer. No records were merged or changed.";
+    case "IDENTIFIER_STALE":
+      return "⚠️ The customer's identifiers changed after this confirmation was prepared. No further change was made.";
+    case "LAST_IDENTIFIER":
+      return "⚠️ A customer's final identifier cannot be removed.";
+    default:
+      return `⚠️ ${error.message}`;
+  }
 };
 
 const confirmMutation = async (
@@ -264,7 +315,7 @@ export const handleCallback = async (
     return;
   }
 
-  let match = /^begin:([PMRBAHEL])$/.exec(data);
+  let match = /^begin:([PMRBAHELU])$/.exec(data);
   if (match?.[1] !== undefined) {
     const operation = operationFromCode(match[1]);
     if (operation === null) return stale(context, target);
@@ -412,7 +463,7 @@ export const handleCallback = async (
     return;
   }
 
-  match = /^back:([sfanu]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  match = /^back:([sfanuic]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const destination = match[1];
     const state = await stateForToken(context, adminId, target, match[2]);
@@ -426,7 +477,11 @@ export const handleCallback = async (
         "SHOW_RESULTS",
         "SHOW_HISTORY",
         "AWAIT_PURCHASE_AMOUNT",
-        "AWAIT_POINT_AMOUNT"
+        "AWAIT_POINT_AMOUNT",
+        "MANAGE_CUSTOMER",
+        "AWAIT_IDENTITY_VALUE",
+        "CONFIRM_IDENTITY_CHANGE",
+        "CONFIRM_IDENTITY_REMOVE"
       ];
       if (
         !allowedSteps.includes(state.currentStep)
@@ -442,8 +497,7 @@ export const handleCallback = async (
         currentStep: "SELECT_MODE",
         selectionMode: null,
         selectedCustomerId: null,
-        selectedWhatsappNumber: null,
-        searchDigits: null,
+        searchQuery: null,
         searchPage: 0,
         payload: { token: nextToken }
       });
@@ -467,10 +521,9 @@ export const handleCallback = async (
       const saved = await context.states.save({
         ...state,
         currentStep: "AWAIT_FULL_NUMBER",
-        selectionMode: "FULL_NUMBER",
+        selectionMode: "PHONE_FULL",
         selectedCustomerId: null,
-        selectedWhatsappNumber: null,
-        searchDigits: null,
+        searchQuery: null,
         searchPage: 0,
         payload: { token: nextToken }
       });
@@ -483,26 +536,56 @@ export const handleCallback = async (
       return;
     }
 
-    if (destination === "u") {
-      if (state.activeOperation !== "ADD_CUSTOMER" || state.currentStep !== "CONFIRM_ADD_CUSTOMER") {
+    if (destination === "u" || destination === "c") {
+      if (
+        state.activeOperation !== "ADD_CUSTOMER"
+        || !["AWAIT_ADD_CUSTOMER_IDENTITY", "CONFIRM_ADD_CUSTOMER"].includes(state.currentStep)
+      ) {
         await stale(context, target);
         return;
       }
-      await context.states.save({
+      const saved = await context.states.save({
         ...state,
-        currentStep: "AWAIT_ADD_CUSTOMER_NUMBER",
+        currentStep: "SELECT_ADD_CUSTOMER_IDENTITY",
         selectionMode: null,
         selectedCustomerId: null,
-        selectedWhatsappNumber: null,
-        searchDigits: null,
+        searchQuery: null,
         searchPage: 0,
         payload: { token: nextToken }
       });
       await display(
         context,
         target,
-        `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nEnter the customer's WhatsApp number.\nSpaces and hyphens are accepted.`,
-        cancelKeyboard()
+        `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nChoose the customer's first identifier.`,
+        addCustomerIdentityKeyboard(saved.payload.token)
+      );
+      return;
+    }
+
+    if (destination === "i") {
+      if (
+        state.activeOperation !== "MANAGE_CUSTOMER"
+        || state.selectedCustomerId === null
+        || !["MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE", "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE"].includes(state.currentStep)
+      ) {
+        await stale(context, target);
+        return;
+      }
+      const customer = await context.customers.findById(state.selectedCustomerId);
+      if (customer === null) {
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "MANAGE_CUSTOMER",
+        payload: { token: nextToken }
+      });
+      await display(
+        context,
+        target,
+        manageCustomerMessage(customer),
+        manageCustomerKeyboard(customer, saved.payload.token)
       );
       return;
     }
@@ -559,7 +642,7 @@ export const handleCallback = async (
     return;
   }
 
-  match = /^mode:([sf]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  match = /^mode:([sfwt]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[2]);
     if (
@@ -579,14 +662,20 @@ export const handleCallback = async (
       await stale(context, target);
       return;
     }
-    const suffix = match[1] === "s";
+    const mode = match[1] === "s"
+      ? "PHONE_SUFFIX"
+      : match[1] === "f"
+        ? "PHONE_FULL"
+        : match[1] === "w"
+          ? "WHATSAPP_USERNAME"
+          : "TELEGRAM_USERNAME";
+    const suffix = mode === "PHONE_SUFFIX";
     const saved = await context.states.save({
       ...state,
       currentStep: suffix ? "AWAIT_SEARCH" : "AWAIT_FULL_NUMBER",
-      selectionMode: suffix ? "SUFFIX" : "FULL_NUMBER",
+      selectionMode: mode,
       selectedCustomerId: null,
-      selectedWhatsappNumber: null,
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0,
       payload: { token: newStateToken() }
     });
@@ -595,7 +684,9 @@ export const handleCallback = async (
       target,
       suffix
         ? suffixSearchPrompt(state.activeOperation)
-        : fullNumberSearchPrompt(state.activeOperation),
+        : mode === "PHONE_FULL"
+          ? fullNumberSearchPrompt(state.activeOperation)
+          : usernameSearchPrompt(state.activeOperation, mode),
       backCancelKeyboard(saved.payload.token, "s")
     );
     return;
@@ -610,20 +701,25 @@ export const handleCallback = async (
       || state.activeOperation === "EXPORT"
       || state.activeOperation === "LEADERBOARD"
     ) return;
+    const selectionMode = state.selectionMode ?? "PHONE_SUFFIX";
+    const suffix = selectionMode === "PHONE_SUFFIX";
     const saved = await context.states.save({
       ...state,
-      currentStep: "AWAIT_SEARCH",
-      selectionMode: "SUFFIX",
+      currentStep: suffix ? "AWAIT_SEARCH" : "AWAIT_FULL_NUMBER",
+      selectionMode,
       selectedCustomerId: null,
-      selectedWhatsappNumber: null,
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0,
       payload: { token: newStateToken() }
     });
     await display(
       context,
       target,
-      suffixSearchPrompt(state.activeOperation),
+      suffix
+        ? suffixSearchPrompt(state.activeOperation)
+        : selectionMode === "PHONE_FULL"
+          ? fullNumberSearchPrompt(state.activeOperation)
+          : usernameSearchPrompt(state.activeOperation, selectionMode),
       backCancelKeyboard(saved.payload.token, "s")
     );
     return;
@@ -664,14 +760,20 @@ export const handleCallback = async (
     if (
       state === null
       || state.currentStep !== "CONFIRM_CREATE_FOR_OPERATION"
-      || state.payload.pendingPhone === undefined
       || (state.activeOperation !== "PURCHASE" && state.activeOperation !== "MANUAL_ADD")
     ) {
       await stale(context, target);
       return;
     }
-    const phone = normalizePhone(state.payload.pendingPhone);
-    const created = await context.customers.createZeroBalance(phone, updateId, new Date().toISOString());
+    const pendingType = state.payload.pendingIdentifierType
+      ?? (state.payload.pendingPhone === undefined ? undefined : "WHATSAPP_PHONE");
+    const pendingValue = state.payload.pendingIdentifierValue ?? state.payload.pendingPhone;
+    if (pendingType === undefined || pendingValue === undefined) {
+      await stale(context, target);
+      return;
+    }
+    const identifier = identifierFromStoredValue(pendingType, pendingValue);
+    const created = await context.customers.createZeroBalance(identifier, updateId, new Date().toISOString());
     await promptAfterSelection(context, state, created.customer, chatId, target);
     return;
   }
@@ -680,19 +782,198 @@ export const handleCallback = async (
   if (match?.[1] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[1]);
     if (state === null || state.activeOperation !== "ADD_CUSTOMER") return;
-    await context.states.save({
+    const saved = await context.states.save({
       ...state,
-      currentStep: "AWAIT_ADD_CUSTOMER_NUMBER",
+      currentStep: "SELECT_ADD_CUSTOMER_IDENTITY",
       selectedCustomerId: null,
-      selectedWhatsappNumber: null,
       payload: { token: newStateToken() }
     });
     await display(
       context,
       target,
-      `${BRAND}\n\nEnter the customer's WhatsApp number.\nSpaces and hyphens are accepted.`,
-      cancelKeyboard()
+      `${BRAND}\n\n➕ <b>Add New Customer</b>\n\nChoose the customer's first identifier.`,
+      addCustomerIdentityKeyboard(saved.payload.token)
     );
+    return;
+  }
+
+  match = /^newid:([pwt]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const type = identifierTypeFromCode(match[1]);
+    if (
+      state === null
+      || type === null
+      || state.activeOperation !== "ADD_CUSTOMER"
+      || state.currentStep !== "SELECT_ADD_CUSTOMER_IDENTITY"
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "AWAIT_ADD_CUSTOMER_IDENTITY",
+      payload: { token: newStateToken(), pendingIdentifierType: type }
+    });
+    await display(
+      context,
+      target,
+      identifierInputPrompt(type, true),
+      backCancelKeyboard(saved.payload.token, "c", "⬅️ Back to Identifier Types")
+    );
+    return;
+  }
+
+  match = /^idedit:([pwt]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const type = identifierTypeFromCode(match[1]);
+    if (
+      state === null
+      || type === null
+      || state.activeOperation !== "MANAGE_CUSTOMER"
+      || state.currentStep !== "MANAGE_CUSTOMER"
+      || state.selectedCustomerId === null
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null) {
+      await stale(context, target);
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "AWAIT_IDENTITY_VALUE",
+      payload: { token: newStateToken(), pendingIdentifierType: type }
+    });
+    const current = customerIdentifierValue(customer, type);
+    await display(
+      context,
+      target,
+      `${identifierInputPrompt(type, false)}\n\nCurrent Value: ${current === null ? "Not provided" : identifierDisplayValue(type, current)}`,
+      backCancelKeyboard(saved.payload.token, "i", "⬅️ Back to Identity Management")
+    );
+    return;
+  }
+
+  match = /^idremove:([pwt]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const type = identifierTypeFromCode(match[1]);
+    if (
+      state === null
+      || type === null
+      || state.activeOperation !== "MANAGE_CUSTOMER"
+      || state.currentStep !== "MANAGE_CUSTOMER"
+      || state.selectedCustomerId === null
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null) {
+      await stale(context, target);
+      return;
+    }
+    const current = customerIdentifierValue(customer, type);
+    if (current === null) {
+      await stale(context, target);
+      return;
+    }
+    const identifierCount = [customer.whatsappNumber, customer.whatsappUsername, customer.telegramUsername]
+      .filter((value) => value !== null).length;
+    if (identifierCount === 1) {
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n⚠️ A customer's final identifier cannot be removed. Add another identifier first.`,
+        manageCustomerKeyboard(customer, state.payload.token)
+      );
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "CONFIRM_IDENTITY_REMOVE",
+      payload: {
+        token: newStateToken(),
+        pendingIdentifierType: type,
+        expectedIdentifierValue: current
+      }
+    });
+    await display(
+      context,
+      target,
+      identityRemoveConfirmationMessage(customer, type),
+      identityRemoveConfirmKeyboard(saved.payload.token)
+    );
+    return;
+  }
+
+  match = /^id(confirm|removeconfirm):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const removing = match[1] === "removeconfirm";
+    const pendingIdentifierValue = state?.payload.pendingIdentifierValue;
+    if (
+      state === null
+      || state.activeOperation !== "MANAGE_CUSTOMER"
+      || state.currentStep !== (removing ? "CONFIRM_IDENTITY_REMOVE" : "CONFIRM_IDENTITY_CHANGE")
+      || state.selectedCustomerId === null
+      || state.payload.pendingIdentifierType === undefined
+      || state.payload.expectedIdentifierValue === undefined
+      || (!removing && pendingIdentifierValue === undefined)
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const type = state.payload.pendingIdentifierType;
+    let nextIdentifier: CustomerIdentifierInput | null = null;
+    if (!removing) {
+      if (pendingIdentifierValue === undefined) {
+        await stale(context, target);
+        return;
+      }
+      nextIdentifier = identifierFromStoredValue(type, pendingIdentifierValue);
+    }
+    try {
+      const result = await context.customers.changeIdentifier(
+        state.selectedCustomerId,
+        type,
+        state.payload.expectedIdentifierValue,
+        nextIdentifier,
+        new Date().toISOString()
+      );
+      await display(
+        context,
+        target,
+        identityChangeSuccessMessage(result.customer, type, removing, result.duplicate),
+        dashboardKeyboard()
+      );
+      await context.states.clear(adminId);
+    } catch (error: unknown) {
+      if (!(error instanceof DomainError) || !["IDENTIFIER_CONFLICT", "IDENTIFIER_STALE", "LAST_IDENTIFIER"].includes(error.code)) {
+        throw error;
+      }
+      const customer = await context.customers.findById(state.selectedCustomerId);
+      if (customer === null) {
+        await context.states.clear(adminId);
+        await display(context, target, `${BRAND}\n\n${identityFailureMessage(error)}`, dashboardKeyboard());
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "MANAGE_CUSTOMER",
+        payload: { token: newStateToken() }
+      });
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n${identityFailureMessage(error)}\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        manageCustomerKeyboard(customer, saved.payload.token)
+      );
+    }
     return;
   }
 
@@ -783,9 +1064,16 @@ export const handleCallback = async (
   if (match?.[1] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[1]);
     if (state === null) return;
-    if (state.currentStep === "CONFIRM_ADD_CUSTOMER" && state.payload.pendingPhone !== undefined) {
-      const phone = normalizePhone(state.payload.pendingPhone);
-      const result = await context.customers.createZeroBalance(phone, updateId, new Date().toISOString());
+    if (state.currentStep === "CONFIRM_ADD_CUSTOMER") {
+      const pendingType = state.payload.pendingIdentifierType
+        ?? (state.payload.pendingPhone === undefined ? undefined : "WHATSAPP_PHONE");
+      const pendingValue = state.payload.pendingIdentifierValue ?? state.payload.pendingPhone;
+      if (pendingType === undefined || pendingValue === undefined) {
+        await stale(context, target);
+        return;
+      }
+      const identifier = identifierFromStoredValue(pendingType, pendingValue);
+      const result = await context.customers.createZeroBalance(identifier, updateId, new Date().toISOString());
       await display(context, target, addCustomerSuccessMessage(result.customer));
       await context.states.clear(adminId);
       return;
@@ -826,7 +1114,7 @@ export const handleCallback = async (
     return;
   }
 
-  match = /^act:([PMRBH]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  match = /^act:([PMRBHU]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[2]);
     const operation = operationFromCode(match[1]);
@@ -838,7 +1126,7 @@ export const handleCallback = async (
       operationStartedUpdateId: updateId,
       activeOperation: operation,
       currentStep: "SELECT_MODE",
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0,
       payload: { token: newStateToken() }
     };

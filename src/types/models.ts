@@ -3,9 +3,11 @@ export type LeaderboardPeriodType = "WEEK" | "MONTH";
 
 export interface Customer {
   id: number;
-  whatsappNumber: string;
-  phoneLast4: string;
-  phoneLast5: string;
+  whatsappNumber: string | null;
+  phoneLast4: string | null;
+  phoneLast5: string | null;
+  whatsappUsername: string | null;
+  telegramUsername: string | null;
   pointBalanceUnits: number;
   roundedRewardBdt: number;
   creationTelegramUpdateId: number | null;
@@ -45,7 +47,9 @@ export interface MutationReceipt {
 
 export interface LeaderboardEntry {
   customerId: number;
-  whatsappNumber: string;
+  whatsappNumber: string | null;
+  whatsappUsername: string | null;
+  telegramUsername: string | null;
   earnedPointUnits: number;
   firstQualifyingEarningAtUtc: string;
 }
@@ -57,10 +61,15 @@ export type Operation =
   | "BALANCE"
   | "HISTORY"
   | "ADD_CUSTOMER"
+  | "MANAGE_CUSTOMER"
   | "EXPORT"
   | "LEADERBOARD";
 
-export type SelectionMode = "SUFFIX" | "FULL_NUMBER";
+export type SelectionMode =
+  | "PHONE_SUFFIX"
+  | "PHONE_FULL"
+  | "WHATSAPP_USERNAME"
+  | "TELEGRAM_USERNAME";
 
 export type WorkflowStep =
   | "SELECT_MODE"
@@ -70,6 +79,12 @@ export type WorkflowStep =
   | "CONFIRM_CREATE_FOR_OPERATION"
   | "AWAIT_ADD_CUSTOMER_NUMBER"
   | "CONFIRM_ADD_CUSTOMER"
+  | "SELECT_ADD_CUSTOMER_IDENTITY"
+  | "AWAIT_ADD_CUSTOMER_IDENTITY"
+  | "MANAGE_CUSTOMER"
+  | "AWAIT_IDENTITY_VALUE"
+  | "CONFIRM_IDENTITY_CHANGE"
+  | "CONFIRM_IDENTITY_REMOVE"
   | "AWAIT_PURCHASE_AMOUNT"
   | "CONFIRM_PURCHASE"
   | "AWAIT_POINT_AMOUNT"
@@ -91,6 +106,9 @@ export interface StatePayload {
   note?: string;
   expectedBalanceUnits?: number;
   pendingPhone?: string;
+  pendingIdentifierType?: CustomerIdentifierType;
+  pendingIdentifierValue?: string;
+  expectedIdentifierValue?: string | null;
   leaderboardResetType?: LeaderboardPeriodType;
   leaderboardResetPeriodKey?: string;
 }
@@ -102,11 +120,11 @@ export interface ConversationState {
   currentStep: WorkflowStep;
   selectionMode: SelectionMode | null;
   selectedCustomerId: number | null;
-  selectedWhatsappNumber: string | null;
-  searchDigits: string | null;
+  searchQuery: string | null;
   searchPage: number;
   payload: StatePayload;
   createdAtUtc: string;
   updatedAtUtc: string;
   expiresAtUtc: string;
 }
+import type { CustomerIdentifierType } from "../domain/customer-identity";

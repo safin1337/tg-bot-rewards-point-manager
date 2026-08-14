@@ -8,6 +8,7 @@ const commands = [
   { command: "balance", description: "Check customer reward balance" },
   { command: "history", description: "View customer reward history" },
   { command: "addcustomer", description: "Register a customer with zero points" },
+  { command: "managecustomer", description: "Manage customer identities" },
   { command: "export", description: "Export customer and transaction data" },
   { command: "leaderboard", description: "View or reset reward leaderboards" },
   { command: "restart", description: "Restart the current operation" },

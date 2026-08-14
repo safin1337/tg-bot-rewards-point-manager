@@ -4,6 +4,13 @@ import {
   type AppConfiguration
 } from "../config/app-config";
 import { formatPointUnitsForDisplay } from "../domain/points";
+import {
+  customerIdentifierValue,
+  customerPrimaryLabel,
+  identifierDisplayValue,
+  identifierTypeLabel,
+  type CustomerIdentifierType
+} from "../domain/customer-identity";
 import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
 import type { Customer, LeaderboardEntry, LeaderboardPeriodType, Operation, RewardTransaction } from "../types/models";
 import { escapeHtml } from "../utils/html";
@@ -40,7 +47,8 @@ const CUSTOMER_SELECTION_OPERATIONS = {
   MANUAL_ADD: { emoji: "➕", label: "Add Points Manually" },
   REDEEM: { emoji: "🎁", label: "Redeem Points" },
   BALANCE: { emoji: "💰", label: "Check Balance" },
-  HISTORY: { emoji: "📜", label: "Customer History" }
+  HISTORY: { emoji: "📜", label: "Customer History" },
+  MANAGE_CUSTOMER: { emoji: "🪪", label: "Manage Customer Identities" }
 } satisfies Readonly<Record<CustomerSelectionOperation, { emoji: string; label: string }>>;
 
 const customerSelectionHeading = (operation: CustomerSelectionOperation): string => {
@@ -71,6 +79,14 @@ export const fullNumberSearchPrompt = (operation: CustomerSelectionOperation): s
     "Enter the full WhatsApp number.\nSpaces and hyphens are accepted."
   );
 
+export const usernameSearchPrompt = (
+  operation: CustomerSelectionOperation,
+  type: "WHATSAPP_USERNAME" | "TELEGRAM_USERNAME"
+): string => selectedOperationMessage(
+  operation,
+  `Enter the exact ${type === "WHATSAPP_USERNAME" ? "WhatsApp" : "Telegram"} username. A single leading @ is optional.`
+);
+
 export const earningEntryPromptMessage = (
   customer: Customer,
   operation: "PURCHASE" | "MANUAL_ADD",
@@ -97,7 +113,7 @@ export const earningEntryPromptMessage = (
   const instruction = operation === "PURCHASE"
     ? "Enter the purchase amount in BDT."
     : "Enter the number of points you want to add.";
-  return `✅ <b>Taking entry for ${escapeHtml(customer.whatsappNumber)}</b>\n\nLatest Transaction:\n${latestDetails}\n\n${instruction}`;
+  return `✅ <b>Taking entry for ${escapeHtml(customerPrimaryLabel(customer))}</b>\n\nLatest Transaction:\n${latestDetails}\n\n${instruction}`;
 };
 
 const gcd = (left: bigint, right: bigint): bigint => {
@@ -164,7 +180,9 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 <b>Help</b>
 
 • /addcustomer — register a zero-point customer.
-• For purchase, points, redemption, balance, or history, search with exactly the final 4 or 5 phone digits or enter the complete number.
+• /managecustomer — add, change, or remove a customer's current identifiers.
+• For purchase, points, redemption, balance, history, or customer management, search by WhatsApp phone, WhatsApp username, or Telegram username.
+• Phone search accepts exactly the final 4 or 5 digits or a complete number; username search is exact and case-insensitive.
 • Spaces and supported hyphens are accepted in complete phone numbers.
 • /purchase — ${earningHelp}. Any fractional points resulting from the calculation are retained and rounded half-up to four decimal places before storage.
 • /addpoints — add a positive value with up to four decimal places and an optional note.
@@ -199,7 +217,7 @@ export const leaderboardMessage = (
     : entries.map((entry, index) => {
       const rank = index + 1;
       const ordinal = rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`;
-      return `${ordinal} ${escapeHtml(entry.whatsappNumber)} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} points`;
+      return `${ordinal} ${escapeHtml(customerPrimaryLabel(entry))} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} points`;
     });
   return `🏆 <b>${BRAND_NAME_HTML} ${title} Leaderboard</b>
 ${escapeHtml(period.label)} — ${period.running ? "Running" : "Completed"}
@@ -234,7 +252,7 @@ export const balanceMessage = (customer: Customer): string => `${BRAND}
 
 🔍 <b>Reward Point Balance</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 
 🎉 Congratulations!
 
@@ -247,7 +265,7 @@ export const purchaseSuccessMessage = (customer: Customer, amount: number, earne
 
 ✅ <b>Purchase Successfully Recorded</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Purchase Amount: BDT ${amount}
 Points Earned: ${formatPointUnitsForDisplay(earned)} points
 
@@ -262,7 +280,7 @@ export const manualAddSuccessMessage = (customer: Customer, units: number, note:
 
 ✅ <b>Reward Points Successfully Added</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Points Added: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : `\nReason: ${escapeHtml(note)}`}
 
 🎉 Congratulations!
@@ -280,7 +298,7 @@ export const redemptionSuccessMessage = (
 
 ✅ <b>Reward Points Successfully Redeemed</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 
 Reward amount redeemed: ${formatPointUnitsForDisplay(redeemedUnits)} points
 Equivalent reward value: BDT ${redeemedRewardBdt}
@@ -294,11 +312,11 @@ export const addCustomerSuccessMessage = (customer: Customer): string => `${BRAN
 
 ✅ <b>Customer Successfully Added</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Current Points: 0.00 points
 Current Reward Value: ≈ BDT 0
 
-This customer can now be found using the last 4 or 5 digits.
+This customer can now be found using any registered identifier.
 
 `;
 
@@ -306,7 +324,7 @@ export const existingCustomerMessage = (customer: Customer): string => `${BRAND}
 
 ⚠️ This customer is already registered.
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Current Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 Current Reward Value: ≈ BDT ${customer.roundedRewardBdt}`;
 
@@ -340,7 +358,7 @@ export const historyMessage = (
 
 📜 <b>Customer Reward History</b>
 
-Customer: ${escapeHtml(customer.whatsappNumber)}
+Customer: ${escapeHtml(customerPrimaryLabel(customer))}
 Current Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 Current Reward Value: ≈ BDT ${customer.roundedRewardBdt}
 📄 Page: ${page + 1}/8
@@ -349,3 +367,65 @@ ${items}
 
 📄 Page: ${page + 1}/8`;
 };
+
+export const customerIdentityLines = (customer: Customer): string => [
+  `Customer ID: ${customer.id}`,
+  `WhatsApp Phone: ${customer.whatsappNumber === null ? "Not provided" : escapeHtml(customer.whatsappNumber)}`,
+  `WhatsApp Username: ${customer.whatsappUsername === null ? "Not provided" : escapeHtml(`@${customer.whatsappUsername}`)}`,
+  `Telegram Username: ${customer.telegramUsername === null ? "Not provided" : escapeHtml(`@${customer.telegramUsername}`)}`
+].join("\n");
+
+export const manageCustomerMessage = (customer: Customer): string => `${BRAND}
+
+🪪 <b>Manage Customer Identities</b>
+
+${customerIdentityLines(customer)}
+
+Choose an identifier to add, change, or remove.`;
+
+export const identityChangeConfirmationMessage = (
+  customer: Customer,
+  type: CustomerIdentifierType,
+  nextValue: string
+): string => {
+  const current = customerIdentifierValue(customer, type);
+  return `${BRAND}
+
+<b>Confirm Identifier ${current === null ? "Addition" : "Change"}</b>
+
+${customerIdentityLines(customer)}
+
+Identifier: ${identifierTypeLabel(type)}
+Current Value: ${current === null ? "Not provided" : escapeHtml(identifierDisplayValue(type, current))}
+New Value: ${escapeHtml(identifierDisplayValue(type, nextValue))}`;
+};
+
+export const identityRemoveConfirmationMessage = (
+  customer: Customer,
+  type: CustomerIdentifierType
+): string => {
+  const current = customerIdentifierValue(customer, type);
+  if (current === null) throw new Error("Customer identifier is missing.");
+  return `${BRAND}
+
+⚠️ <b>Remove Customer Identifier?</b>
+
+${customerIdentityLines(customer)}
+
+Remove: ${identifierTypeLabel(type)} — ${escapeHtml(identifierDisplayValue(type, current))}
+
+Balances, transactions, and leaderboard totals will not be changed.`;
+};
+
+export const identityChangeSuccessMessage = (
+  customer: Customer,
+  type: CustomerIdentifierType,
+  removed: boolean,
+  duplicate: boolean
+): string => `${BRAND}
+
+${duplicate ? "ℹ️ This identifier change was already applied." : `✅ ${identifierTypeLabel(type)} ${removed ? "removed" : "saved"} successfully.`}
+
+${customerIdentityLines(customer)}
+
+Customer balances, transactions, and leaderboard totals were not changed.`;

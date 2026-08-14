@@ -10,6 +10,7 @@ import type {
   TransactionType,
   WorkflowStep
 } from "../types/models";
+import type { CustomerIdentifierType } from "../domain/customer-identity";
 
 type Row = Record<string, unknown>;
 
@@ -77,15 +78,25 @@ const isoUtcField = (row: Row, key: string): string => {
   return value;
 };
 
-const normalizedPhoneField = (row: Row, key: string): string => {
-  const value = stringField(row, key);
-  if (!/^\+[1-9]\d{6,14}$/.test(value)) throw new Error("Invalid database phone.");
+const nullableNormalizedPhoneField = (row: Row, key: string): string | null => {
+  const value = nullableStringField(row, key);
+  if (value !== null && !/^\+[1-9]\d{6,14}$/.test(value)) {
+    throw new Error("Invalid database phone.");
+  }
+  return value;
+};
+
+const nullableUsernameField = (row: Row, key: string): string | null => {
+  const value = nullableStringField(row, key);
+  if (value !== null && (value.length > 64 || !/^[A-Za-z0-9_]+$/.test(value))) {
+    throw new Error("Invalid database username.");
+  }
   return value;
 };
 
 const OPERATIONS: readonly Operation[] = [
   "PURCHASE", "MANUAL_ADD", "REDEEM", "BALANCE", "HISTORY", "ADD_CUSTOMER", "EXPORT",
-  "LEADERBOARD"
+  "LEADERBOARD", "MANAGE_CUSTOMER"
 ];
 const STEPS: readonly WorkflowStep[] = [
   "SELECT_MODE", "AWAIT_SEARCH", "SHOW_RESULTS", "AWAIT_FULL_NUMBER",
@@ -93,7 +104,9 @@ const STEPS: readonly WorkflowStep[] = [
   "AWAIT_PURCHASE_AMOUNT", "CONFIRM_PURCHASE", "AWAIT_POINT_AMOUNT", "AWAIT_NOTE",
   "CONFIRM_MANUAL_ADD", "CONFIRM_REDEEM", "SHOW_HISTORY", "SELECT_EXPORT",
   "LEADERBOARD_MENU", "LEADERBOARD_WEEKLY", "LEADERBOARD_MONTHLY",
-  "CONFIRM_LEADERBOARD_RESET"
+  "CONFIRM_LEADERBOARD_RESET", "SELECT_ADD_CUSTOMER_IDENTITY",
+  "AWAIT_ADD_CUSTOMER_IDENTITY", "MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE",
+  "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE"
 ];
 const TRANSACTION_TYPES: readonly TransactionType[] = ["PURCHASE", "MANUAL_ADD", "REDEEM"];
 const LEADERBOARD_PERIOD_TYPES: readonly LeaderboardPeriodType[] = ["WEEK", "MONTH"];
@@ -150,6 +163,41 @@ const parsePayload = (json: string): StatePayload => {
     }
     payload.pendingPhone = row.pendingPhone;
   }
+  if (row.pendingIdentifierType !== undefined) {
+    const types: readonly CustomerIdentifierType[] = [
+      "WHATSAPP_PHONE", "WHATSAPP_USERNAME", "TELEGRAM_USERNAME"
+    ];
+    if (
+      typeof row.pendingIdentifierType !== "string"
+      || !types.includes(row.pendingIdentifierType as CustomerIdentifierType)
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.pendingIdentifierType = row.pendingIdentifierType as CustomerIdentifierType;
+  }
+  if (row.pendingIdentifierValue !== undefined) {
+    if (
+      typeof row.pendingIdentifierValue !== "string"
+      || row.pendingIdentifierValue.length === 0
+      || row.pendingIdentifierValue.length > 64
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.pendingIdentifierValue = row.pendingIdentifierValue;
+  }
+  if (row.expectedIdentifierValue !== undefined) {
+    if (
+      row.expectedIdentifierValue !== null
+      && (
+        typeof row.expectedIdentifierValue !== "string"
+        || row.expectedIdentifierValue.length === 0
+        || row.expectedIdentifierValue.length > 64
+      )
+    ) {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.expectedIdentifierValue = row.expectedIdentifierValue;
+  }
   if (row.leaderboardResetType !== undefined) {
     if (
       typeof row.leaderboardResetType !== "string"
@@ -178,12 +226,16 @@ const parsePayload = (json: string): StatePayload => {
 
 export const mapCustomer = (value: unknown): Customer => {
   const row = objectRow(value);
-  const whatsappNumber = normalizedPhoneField(row, "whatsapp_number");
-  const phoneLast4 = stringField(row, "phone_last4");
-  const phoneLast5 = stringField(row, "phone_last5");
+  const whatsappNumber = nullableNormalizedPhoneField(row, "whatsapp_number");
+  const phoneLast4 = nullableStringField(row, "phone_last4");
+  const phoneLast5 = nullableStringField(row, "phone_last5");
+  const whatsappUsername = nullableUsernameField(row, "whatsapp_username");
+  const telegramUsername = nullableUsernameField(row, "telegram_username");
   if (
-    phoneLast4 !== whatsappNumber.slice(-4)
-    || phoneLast5 !== whatsappNumber.slice(-5)
+    (whatsappNumber === null
+      ? phoneLast4 !== null || phoneLast5 !== null
+      : phoneLast4 !== whatsappNumber.slice(-4) || phoneLast5 !== whatsappNumber.slice(-5))
+    || (whatsappNumber === null && whatsappUsername === null && telegramUsername === null)
   ) {
     throw new Error("Invalid database phone suffix.");
   }
@@ -192,6 +244,8 @@ export const mapCustomer = (value: unknown): Customer => {
     whatsappNumber,
     phoneLast4,
     phoneLast5,
+    whatsappUsername,
+    telegramUsername,
     pointBalanceUnits: nonnegativeIntegerField(row, "point_balance_units"),
     roundedRewardBdt: nonnegativeIntegerField(row, "rounded_reward_bdt"),
     creationTelegramUpdateId: nullableNonnegativeIntegerField(row, "creation_telegram_update_id"),
@@ -271,7 +325,9 @@ export const mapLeaderboardEntry = (value: unknown): LeaderboardEntry => {
   const row = objectRow(value);
   return {
     customerId: positiveIntegerField(row, "customer_id"),
-    whatsappNumber: normalizedPhoneField(row, "whatsapp_number"),
+    whatsappNumber: nullableNormalizedPhoneField(row, "whatsapp_number"),
+    whatsappUsername: nullableUsernameField(row, "whatsapp_username"),
+    telegramUsername: nullableUsernameField(row, "telegram_username"),
     earnedPointUnits: positiveIntegerField(row, "earned_point_units"),
     firstQualifyingEarningAtUtc: isoUtcField(row, "first_qualifying_earning_at_utc")
   };
@@ -280,16 +336,20 @@ export const mapLeaderboardEntry = (value: unknown): LeaderboardEntry => {
 export const mapConversationState = (value: unknown): ConversationState => {
   const row = objectRow(value);
   const rawMode = nullableStringField(row, "selection_mode");
-  if (rawMode !== null && rawMode !== "SUFFIX" && rawMode !== "FULL_NUMBER") {
+  if (
+    rawMode !== null
+    && rawMode !== "PHONE_SUFFIX"
+    && rawMode !== "PHONE_FULL"
+    && rawMode !== "WHATSAPP_USERNAME"
+    && rawMode !== "TELEGRAM_USERNAME"
+  ) {
     throw new Error("Invalid conversation state.");
   }
   const administratorTelegramId = stringField(row, "administrator_telegram_id");
-  const selectedWhatsappNumber = nullableStringField(row, "selected_whatsapp_number");
-  const searchDigits = nullableStringField(row, "search_digits");
+  const searchQuery = nullableStringField(row, "search_query");
   if (
     !/^[1-9]\d*$/.test(administratorTelegramId)
-    || (selectedWhatsappNumber !== null && !/^\+[1-9]\d{6,14}$/.test(selectedWhatsappNumber))
-    || (searchDigits !== null && !/^\d{4,5}$/.test(searchDigits))
+    || (searchQuery !== null && (searchQuery.length === 0 || searchQuery.length > 64))
   ) {
     throw new Error("Invalid conversation state.");
   }
@@ -300,8 +360,7 @@ export const mapConversationState = (value: unknown): ConversationState => {
     currentStep: enumField(row, "current_step", STEPS),
     selectionMode: rawMode,
     selectedCustomerId: nullablePositiveIntegerField(row, "selected_customer_id"),
-    selectedWhatsappNumber,
-    searchDigits,
+    searchQuery,
     searchPage: nonnegativeIntegerField(row, "search_page"),
     payload: parsePayload(stringField(row, "payload_json")),
     createdAtUtc: isoUtcField(row, "created_at_utc"),

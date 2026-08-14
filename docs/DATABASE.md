@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.5 database design
+# Telegram Loyalty Rewards Point Manager V2.0.6 database design
 
 ## Sources of truth
 
@@ -6,6 +6,22 @@
 of truth for an available point balance, and `rounded_reward_bdt` is
 recalculated from the total with
 `floor((pointUnits + 20,000) / 40,000)` after every mutation.
+
+`customers.id` is the immutable customer identity referenced by transactions,
+mutation receipts, conversation selection state, and leaderboard aggregates.
+The nullable `whatsapp_number`, `whatsapp_username`, and `telegram_username`
+columns are current lookup aliases, not primary keys. At least one alias is
+required. Each alias is unique within its own platform; username columns use
+case-insensitive uniqueness while preserving the entered capitalization stored
+in the row. Phone suffix columns are both null when the phone is null and must
+match the final digits whenever a phone exists.
+
+Identity changes are direct conditional updates against `customers.id` and the
+exact previously displayed alias value. They do not insert a reward transaction
+or alter point units, rounded reward BDT, mutation receipts, or leaderboard
+aggregates. The database rejects removal of the last alias and same-platform
+duplicate claims. There is no identity history table and no `identity_version`
+column.
 
 `Redeem All Points` reads this exact integer source of truth and carries it into
 the existing expected-balance confirmation and atomic mutation. It does not
@@ -20,11 +36,15 @@ the business source of truth. The alternative flat policy remains `BDT 50 = 1
 point`. The redemption policy remains `4 points = BDT 1`, or 40,000 point units
 per reward BDT.
 
-V2.0.5 makes no schema or data change. Existing balances, detailed
-transactions, mutation receipts, reward snapshots, and leaderboard aggregates
-remain exactly as stored. A changed earning mode applies only to later confirmed
-purchases. A week or month spanning a deployment may therefore contain gross
-purchase earnings calculated under different earning policies.
+V2.0.6 migration `0007_multi_identifier_customers.sql` preserves existing
+customer IDs and phone aliases while adding username aliases and updating
+conversation-state search fields. Because SQLite rewrites foreign-key targets
+when a referenced table is renamed, the migration also rebuilds transactions,
+mutation receipts, leaderboard aggregates, and conversation states before
+dropping the old customer table. Explicit column copies, customer copy guards,
+and `pragma_foreign_key_check` make an inconsistency abort the migration.
+Existing balances, detailed transactions, mutation receipts, reward snapshots,
+and leaderboard aggregates remain exactly as stored.
 
 Purchase amounts remain positive whole-number BDT values in the existing
 `purchase_amount_bdt` integer column; decimals are rejected before mutation.
@@ -150,11 +170,17 @@ document is not resent when a later document fails.
 - Transactions, mutation receipts, and aggregates reference unbounded
   customers with restrictive deletes.
 - Aggregates reference periods with `ON DELETE CASCADE`.
-- Customer suffix, transaction history, leaderboard ranking, mutation receipt,
-  reset receipt, and processed-update cleanup paths have matching indexes.
+- Customer phone suffix and case-insensitive username lookup, transaction
+  history, leaderboard ranking, mutation receipt, reset receipt, and
+  processed-update cleanup paths have matching indexes.
 - Retention queries use deterministic timestamp/update-ID or timestamp/row-ID
   ordering.
 
 Run `PRAGMA foreign_key_check;` after migration and restoration. Any returned
 row is a release blocker. Retention row counts above their policy boundaries
 are also release blockers.
+
+For an existing database, take and protect a full remote D1 export before
+applying migration `0007`, then follow the verification queries in
+[V2.0.6-RELEASE.md](V2.0.6-RELEASE.md). Never deploy the V2.0.6 Worker before
+the matching migration succeeds.

@@ -11,6 +11,7 @@ const COMMAND_OPERATIONS: Readonly<Record<string, Operation>> = {
   balance: "BALANCE",
   history: "HISTORY",
   addcustomer: "ADD_CUSTOMER",
+  managecustomer: "MANAGE_CUSTOMER",
   export: "EXPORT",
   leaderboard: "LEADERBOARD"
 };

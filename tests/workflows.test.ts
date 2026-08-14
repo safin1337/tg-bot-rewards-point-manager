@@ -206,7 +206,7 @@ describe("stateful customer search and purchase", () => {
     );
     const reset = (await context.states.get("123456789")).state;
     expect(reset?.payload.token).not.toBe(searched?.payload.token);
-    expect(reset).toMatchObject({ activeOperation: "PURCHASE", searchDigits: null, searchPage: 0 });
+    expect(reset).toMatchObject({ activeOperation: "PURCHASE", searchQuery: null, searchPage: 0 });
 
     await processTelegramUpdate(
       context,
@@ -398,7 +398,6 @@ describe("stateful customer search and purchase", () => {
     const staleConfirmation = await context.states.save({
       ...started,
       selectedCustomerId: created.customer.id,
-      selectedWhatsappNumber: created.customer.whatsappNumber,
       payload: {
         token: started.payload.token,
         purchaseAmountBdt: 80,
@@ -519,8 +518,7 @@ describe("stateful customer search and purchase", () => {
       currentStep: "SELECT_MODE",
       selectionMode: null,
       selectedCustomerId: null,
-      selectedWhatsappNumber: null,
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0
     });
     expect(returned?.payload.token).not.toBe(input?.payload.token);
@@ -547,7 +545,7 @@ describe("stateful customer search and purchase", () => {
     await processTelegramUpdate(context, callback(132, 123456789, `mode:s:${state?.payload.token ?? ""}`));
     await processTelegramUpdate(context, message(133, 123456789, "5678"));
     state = (await context.states.get("123456789")).state;
-    expect(state).toMatchObject({ currentStep: "SHOW_RESULTS", searchDigits: "5678" });
+    expect(state).toMatchObject({ currentStep: "SHOW_RESULTS", searchQuery: "5678" });
 
     await processTelegramUpdate(
       context,
@@ -556,7 +554,7 @@ describe("stateful customer search and purchase", () => {
     expect((await context.states.get("123456789")).state).toMatchObject({
       activeOperation: "BALANCE",
       currentStep: "SELECT_MODE",
-      searchDigits: null,
+      searchQuery: null,
       searchPage: 0
     });
   });
@@ -651,9 +649,8 @@ describe("remaining end-to-end workflows", () => {
     expect(returned).toMatchObject({
       activeOperation: "PURCHASE",
       currentStep: "AWAIT_FULL_NUMBER",
-      selectionMode: "FULL_NUMBER",
-      selectedCustomerId: null,
-      selectedWhatsappNumber: null
+      selectionMode: "PHONE_FULL",
+      selectedCustomerId: null
     });
     expect(returned?.payload).toEqual({ token: returned?.payload.token });
     expect(returned?.payload.token).not.toBe(createToken);
@@ -667,12 +664,17 @@ describe("remaining end-to-end workflows", () => {
   it("registers a new customer at zero without creating reward history", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     await processTelegramUpdate(context, message(30, 123456789, "/addcustomer"));
-    await processTelegramUpdate(context, message(31, 123456789, "01712 345-678"));
+    const state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(31, 123456789, `newid:p:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(32, 123456789, "01712 345-678"));
     const confirmation = (await context.states.get("123456789")).state;
     expect(confirmation?.currentStep).toBe("CONFIRM_ADD_CUSTOMER");
     await processTelegramUpdate(
       context,
-      callback(32, 123456789, `confirm:${confirmation?.payload.token ?? ""}`)
+      callback(33, 123456789, `confirm:${confirmation?.payload.token ?? ""}`)
     );
     const customer = await context.customers.findByPhone("+8801712345678");
     expect(customer).toMatchObject({ pointBalanceUnits: 0, roundedRewardBdt: 0 });
@@ -682,7 +684,7 @@ describe("remaining end-to-end workflows", () => {
     expect(calls.find((call) => String(call.payload?.text).includes("Customer Successfully Added")))
       .toMatchObject({
         method: "editMessageText",
-        payload: { message_id: 32, reply_markup: { inline_keyboard: [] } }
+        payload: { message_id: 33, reply_markup: { inline_keyboard: [] } }
       });
   });
 
@@ -862,6 +864,250 @@ describe("remaining end-to-end workflows", () => {
     expect(calls.filter((call) => call.method === "sendDocument")).toHaveLength(2);
     expect(calls.some((call) => String(call.payload?.text).includes("Export sent successfully"))).toBe(true);
     expect((await context.states.get("123456789")).state).toBeNull();
+  });
+});
+
+describe("multi-identifier workflows", () => {
+  it("creates a username-only customer and finds it case-insensitively while preserving display case", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(300, 123456789, "/addcustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(301, 123456789, `newid:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(302, 123456789, "@Safin_Ahmed"));
+    state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({
+      currentStep: "CONFIRM_ADD_CUSTOMER",
+      payload: {
+        pendingIdentifierType: "WHATSAPP_USERNAME",
+        pendingIdentifierValue: "Safin_Ahmed"
+      }
+    });
+    await processTelegramUpdate(
+      context,
+      callback(303, 123456789, `confirm:${state?.payload.token ?? ""}`)
+    );
+
+    const customer = await context.customers.findByWhatsappUsername("safin_ahmed");
+    expect(customer).toMatchObject({
+      whatsappNumber: null,
+      whatsappUsername: "Safin_Ahmed",
+      telegramUsername: null,
+      pointBalanceUnits: 0
+    });
+
+    await processTelegramUpdate(context, message(304, 123456789, "/balance"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(305, 123456789, `mode:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(306, 123456789, "SAFIN_AHMED"));
+
+    expect((await context.states.get("123456789")).state).toBeNull();
+    expect(calls.some((call) => String(call.payload?.text).includes(
+      "Customer: WhatsApp @Safin_Ahmed"
+    ))).toBe(true);
+  });
+
+  it("adds and changes aliases without changing balance or history", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      310,
+      "2026-08-14T06:10:00.000Z"
+    );
+    await new RewardMutationService(env.DB).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 45_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 311,
+      expectedBalanceUnits: 0
+    });
+
+    await processTelegramUpdate(context, message(312, 123456789, "/managecustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(313, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(314, 123456789, "01712345678"));
+    state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({ currentStep: "MANAGE_CUSTOMER", selectedCustomerId: created.customer.id });
+
+    await processTelegramUpdate(
+      context,
+      callback(315, 123456789, `idedit:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(316, 123456789, "@Soul_User"));
+    state = (await context.states.get("123456789")).state;
+    expect(state?.currentStep).toBe("CONFIRM_IDENTITY_CHANGE");
+    await processTelegramUpdate(
+      context,
+      callback(317, 123456789, `idconfirm:${state?.payload.token ?? ""}`)
+    );
+
+    let customer = await context.customers.findById(created.customer.id);
+    expect(customer).toMatchObject({ whatsappUsername: "Soul_User", pointBalanceUnits: 45_000 });
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(1);
+
+    await processTelegramUpdate(context, message(318, 123456789, "/managecustomer"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(319, 123456789, `mode:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(320, 123456789, "soul_user"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(321, 123456789, `idedit:p:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(322, 123456789, "01898765432"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(323, 123456789, `idconfirm:${state?.payload.token ?? ""}`)
+    );
+
+    customer = await context.customers.findById(created.customer.id);
+    expect(customer).toMatchObject({
+      whatsappNumber: "+8801898765432",
+      phoneLast4: "5432",
+      phoneLast5: "65432",
+      whatsappUsername: "Soul_User",
+      pointBalanceUnits: 45_000
+    });
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(1);
+  });
+
+  it("rejects a duplicate alias and returns to a usable identity panel with a fresh token", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await context.customers.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: { display: "Owned_Name", lookup: "owned_name" } },
+      330,
+      "2026-08-14T06:20:00.000Z"
+    );
+    const target = await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      331,
+      "2026-08-14T06:21:00.000Z"
+    );
+
+    await processTelegramUpdate(context, message(332, 123456789, "/managecustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(333, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(334, 123456789, "01712345678"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(335, 123456789, `idedit:w:${state?.payload.token ?? ""}`)
+    );
+    const input = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(context, message(336, 123456789, "@OWNED_NAME"));
+    const returned = (await context.states.get("123456789")).state;
+
+    expect(returned).toMatchObject({
+      currentStep: "MANAGE_CUSTOMER",
+      selectedCustomerId: target.customer.id
+    });
+    expect(returned?.payload.token).not.toBe(input?.payload.token);
+    expect((await context.customers.findById(target.customer.id))?.whatsappUsername).toBeNull();
+    expect(calls.some((call) => String(call.payload?.text).includes("already belongs"))).toBe(true);
+  });
+
+  it("blocks removal of the final alias before confirmation", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      { type: "TELEGRAM_USERNAME", username: { display: "Only_User", lookup: "only_user" } },
+      340,
+      "2026-08-14T06:30:00.000Z"
+    );
+    await processTelegramUpdate(context, message(341, 123456789, "/managecustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(342, 123456789, `mode:t:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(343, 123456789, "only_user"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(344, 123456789, `idremove:t:${state?.payload.token ?? ""}`)
+    );
+
+    expect((await context.states.get("123456789")).state).toMatchObject({
+      currentStep: "MANAGE_CUSTOMER",
+      selectedCustomerId: created.customer.id
+    });
+    expect((await context.customers.findById(created.customer.id))?.telegramUsername)
+      .toBe("Only_User");
+    expect(calls.some((call) => String(call.payload?.text).includes("final identifier cannot be removed")))
+      .toBe(true);
+  });
+
+  it("does not overwrite an identifier changed after confirmation was prepared", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: { display: "Original_Name", lookup: "original_name" } },
+      350,
+      "2026-08-14T06:40:00.000Z"
+    );
+    await context.customers.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_PHONE",
+      null,
+      { type: "WHATSAPP_PHONE", phone: normalizePhone("01712345678") },
+      "2026-08-14T06:41:00.000Z"
+    );
+
+    await processTelegramUpdate(context, message(351, 123456789, "/managecustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(352, 123456789, `mode:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(353, 123456789, "original_name"));
+    state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(354, 123456789, `idedit:w:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(355, 123456789, "Requested_Name"));
+    const confirmation = (await context.states.get("123456789")).state;
+    expect(confirmation?.currentStep).toBe("CONFIRM_IDENTITY_CHANGE");
+
+    await context.customers.changeIdentifier(
+      created.customer.id,
+      "WHATSAPP_USERNAME",
+      "Original_Name",
+      { type: "WHATSAPP_USERNAME", username: { display: "Concurrent_Name", lookup: "concurrent_name" } },
+      "2026-08-14T06:42:00.000Z"
+    );
+    await processTelegramUpdate(
+      context,
+      callback(356, 123456789, `idconfirm:${confirmation?.payload.token ?? ""}`)
+    );
+
+    expect((await context.customers.findById(created.customer.id))?.whatsappUsername)
+      .toBe("Concurrent_Name");
+    const returned = (await context.states.get("123456789")).state;
+    expect(returned).toMatchObject({
+      currentStep: "MANAGE_CUSTOMER",
+      selectedCustomerId: created.customer.id
+    });
+    expect(returned?.payload.token).not.toBe(confirmation?.payload.token);
+    expect(calls.some((call) => String(call.payload?.text).includes("changed after this confirmation")))
+      .toBe(true);
   });
 });
 

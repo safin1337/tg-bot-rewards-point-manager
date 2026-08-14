@@ -1,5 +1,6 @@
 import type { LeaderboardPeriod } from "../domain/leaderboard";
 import type { Customer, LeaderboardPeriodType } from "../types/models";
+import { customerPrimaryLabel } from "../domain/customer-identity";
 import type { InlineKeyboardMarkup } from "./types";
 
 export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
@@ -16,6 +17,7 @@ export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
       { text: "📜 Customer History", callback_data: "begin:H" },
       { text: "👤 Add New Customer", callback_data: "begin:A" }
     ],
+    [{ text: "🪪 Manage Customer Identities", callback_data: "begin:U" }],
     [
       { text: "🏅 Leaderboard", callback_data: "begin:L" },
       { text: "📤 Export Data", callback_data: "begin:E" }
@@ -28,7 +30,7 @@ export const cancelKeyboard = (): InlineKeyboardMarkup => ({
   inline_keyboard: [[{ text: "❌ Cancel", callback_data: "cancel" }]]
 });
 
-export type BackDestination = "s" | "f" | "a" | "n" | "u";
+export type BackDestination = "s" | "f" | "a" | "n" | "u" | "i" | "c";
 
 const backButton = (
   token: string,
@@ -57,8 +59,10 @@ export const redeemAmountKeyboard = (token: string): InlineKeyboardMarkup => ({
 
 export const selectionKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
-    [{ text: "🔎 Search by Last Digits", callback_data: `mode:s:${token}` }],
-    [{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }],
+    [{ text: "🔎 WhatsApp Last 4/5 Digits", callback_data: `mode:s:${token}` }],
+    [{ text: "☎️ Full WhatsApp Number", callback_data: `mode:f:${token}` }],
+    [{ text: "💬 WhatsApp Username", callback_data: `mode:w:${token}` }],
+    [{ text: "✈️ Telegram Username", callback_data: `mode:t:${token}` }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -70,14 +74,13 @@ export const resultsKeyboard = (
   hasNext: boolean
 ): InlineKeyboardMarkup => {
   const rows = customers.map((customer) => [
-    { text: customer.whatsappNumber, callback_data: `sel:${token}:${customer.id}` }
+    { text: customerPrimaryLabel(customer), callback_data: `sel:${token}:${customer.id}` }
   ]);
   const pagination = [];
   if (page > 0) pagination.push({ text: "⬅️ Previous", callback_data: `pg:${token}:${page - 1}` });
   if (hasNext) pagination.push({ text: "Next ➡️", callback_data: `pg:${token}:${page + 1}` });
   if (pagination.length > 0) rows.push(pagination);
   rows.push([{ text: "🔄 Search Again", callback_data: `again:${token}` }]);
-  rows.push([{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }]);
   rows.push([backButton(token, "s")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
@@ -86,7 +89,6 @@ export const resultsKeyboard = (
 export const noResultsKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
-    [{ text: "⌨️ Enter Full Number", callback_data: `mode:f:${token}` }],
     [backButton(token, "s")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
@@ -107,7 +109,7 @@ export const confirmKeyboard = (
 export const createForOperationKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "✅ Create and Continue", callback_data: `create:${token}` }],
-    [backButton(token, "f")],
+    [backButton(token, "s", "⬅️ Back to Search Methods")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -115,7 +117,7 @@ export const createForOperationKeyboard = (token: string): InlineKeyboardMarkup 
 export const addCustomerConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "✅ Confirm Customer", callback_data: `confirm:${token}` }],
-    [backButton(token, "u")],
+    [backButton(token, "c")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -155,6 +157,7 @@ export const customerActionsKeyboard = (token: string): InlineKeyboardMarkup => 
       { text: "💰 Check Balance", callback_data: `act:B:${token}` }
     ],
     [{ text: "📜 View History", callback_data: `act:H:${token}` }],
+    [{ text: "🪪 Manage Identities", callback_data: `act:U:${token}` }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -162,7 +165,7 @@ export const customerActionsKeyboard = (token: string): InlineKeyboardMarkup => 
 export const existingCustomerKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "Select Customer", callback_data: `actions:${token}` }],
-    [{ text: "⌨️ Enter Another Number", callback_data: `another:${token}` }],
+    [{ text: "⌨️ Enter Another Identifier", callback_data: `another:${token}` }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });
@@ -170,8 +173,61 @@ export const existingCustomerKeyboard = (token: string): InlineKeyboardMarkup =>
 export const missingCustomerKeyboard = (token: string): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [{ text: "🔄 Search Again", callback_data: `again:${token}` }],
-    [{ text: "⌨️ Enter Another Number", callback_data: `mode:f:${token}` }],
     [backButton(token, "s")],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const addCustomerIdentityKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "☎️ WhatsApp Phone", callback_data: `newid:p:${token}` }],
+    [{ text: "💬 WhatsApp Username", callback_data: `newid:w:${token}` }],
+    [{ text: "✈️ Telegram Username", callback_data: `newid:t:${token}` }],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const manageCustomerKeyboard = (customer: Customer, token: string): InlineKeyboardMarkup => {
+  const rows = [
+    [{
+      text: `${customer.whatsappNumber === null ? "➕ Add" : "✏️ Change"} WhatsApp Phone`,
+      callback_data: `idedit:p:${token}`
+    }],
+    [{
+      text: `${customer.whatsappUsername === null ? "➕ Add" : "✏️ Change"} WhatsApp Username`,
+      callback_data: `idedit:w:${token}`
+    }],
+    [{
+      text: `${customer.telegramUsername === null ? "➕ Add" : "✏️ Change"} Telegram Username`,
+      callback_data: `idedit:t:${token}`
+    }]
+  ];
+  if (customer.whatsappNumber !== null) {
+    rows.push([{ text: "🗑️ Remove WhatsApp Phone", callback_data: `idremove:p:${token}` }]);
+  }
+  if (customer.whatsappUsername !== null) {
+    rows.push([{ text: "🗑️ Remove WhatsApp Username", callback_data: `idremove:w:${token}` }]);
+  }
+  if (customer.telegramUsername !== null) {
+    rows.push([{ text: "🗑️ Remove Telegram Username", callback_data: `idremove:t:${token}` }]);
+  }
+  rows.push([backButton(token, "s", "⬅️ Back to Customer Search")]);
+  rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
+  return { inline_keyboard: rows };
+};
+
+export const identityChangeConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "✅ Confirm Identifier", callback_data: `idconfirm:${token}` }],
+    [backButton(token, "i", "⬅️ Back to Identity Management")],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const identityRemoveConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "✅ Confirm Removal", callback_data: `idremoveconfirm:${token}` }],
+    [backButton(token, "i", "⬅️ Back to Identity Management")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });

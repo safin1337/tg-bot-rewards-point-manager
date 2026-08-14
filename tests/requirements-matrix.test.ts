@@ -18,6 +18,7 @@ describe("registered command routing", () => {
     "balance",
     "history",
     "addcustomer",
+    "managecustomer",
     "export",
     "leaderboard",
     "restart",
@@ -32,6 +33,9 @@ describe("registered command routing", () => {
 describe("help requirement matrix", () => {
   it.each([
     "/addcustomer",
+    "/managecustomer",
+    "WhatsApp username",
+    "Telegram username",
     "final 4 or 5",
     "complete number",
     "Spaces and supported hyphens",

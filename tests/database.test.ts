@@ -144,10 +144,42 @@ describe("customer repository and deterministic suffix search", () => {
 });
 
 describe("multi-identifier customer identity", () => {
+  it("stores and searches valid WhatsApp periods while keeping Telegram rules separate", async () => {
+    const repository = customers();
+    const whatsapp = await repository.createZeroBalance(
+      {
+        type: "WHATSAPP_USERNAME",
+        username: normalizeUsername("WHATSAPP_USERNAME", "Example.Name")
+      },
+      690,
+      "2026-08-16T06:00:00.000Z"
+    );
+    const telegram = await repository.createZeroBalance(
+      {
+        type: "TELEGRAM_USERNAME",
+        username: normalizeUsername("TELEGRAM_USERNAME", "Example_Name")
+      },
+      691,
+      "2026-08-16T06:01:00.000Z"
+    );
+
+    expect((await repository.findByWhatsappUsername("example.name"))?.id)
+      .toBe(whatsapp.customer.id);
+    expect((await repository.findByWhatsappUsername("EXAMPLE.NAME"))?.id)
+      .toBe(whatsapp.customer.id);
+    expect(telegram.customer.id).not.toBe(whatsapp.customer.id);
+    await expect(env.DB.prepare(
+      `INSERT INTO customers (
+         telegram_username, point_balance_units, rounded_reward_bdt,
+         creation_telegram_update_id, created_at_utc, updated_at_utc
+       ) VALUES ('invalid.telegram', 0, 0, 692, ?, ?)`
+    ).bind("2026-08-16T06:02:00.000Z", "2026-08-16T06:02:00.000Z").run()).rejects.toThrow();
+  });
+
   it("preserves username capitalization while lookup and uniqueness are case-insensitive", async () => {
     const repository = customers();
     const created = await repository.createZeroBalance(
-      { type: "WHATSAPP_USERNAME", username: normalizeUsername("@Safin_Ahmed") },
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "@Safin_Ahmed") },
       700,
       "2026-08-14T06:00:00.000Z"
     );
@@ -161,7 +193,7 @@ describe("multi-identifier customer identity", () => {
     expect((await repository.findByWhatsappUsername("SAFIN_AHMED"))?.id).toBe(created.customer.id);
 
     const duplicate = await repository.createZeroBalance(
-      { type: "WHATSAPP_USERNAME", username: normalizeUsername("SAFIN_AHMED") },
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "SAFIN_AHMED") },
       701,
       "2026-08-14T06:01:00.000Z"
     );
@@ -172,12 +204,12 @@ describe("multi-identifier customer identity", () => {
   it("allows the same username text once on each platform but rejects a same-platform claim", async () => {
     const repository = customers();
     const whatsapp = await repository.createZeroBalance(
-      { type: "WHATSAPP_USERNAME", username: normalizeUsername("Shared_Name") },
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "Shared_Name") },
       702,
       "2026-08-14T06:02:00.000Z"
     );
     const telegram = await repository.createZeroBalance(
-      { type: "TELEGRAM_USERNAME", username: normalizeUsername("shared_name") },
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "shared_name") },
       703,
       "2026-08-14T06:03:00.000Z"
     );
@@ -192,7 +224,7 @@ describe("multi-identifier customer identity", () => {
       third.customer.id,
       "WHATSAPP_USERNAME",
       null,
-      { type: "WHATSAPP_USERNAME", username: normalizeUsername("SHARED_NAME") },
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "SHARED_NAME") },
       "2026-08-14T06:05:00.000Z"
     )).rejects.toMatchObject({ code: "IDENTIFIER_CONFLICT" });
     expect((await repository.findById(third.customer.id))?.whatsappUsername).toBeNull();
@@ -219,7 +251,7 @@ describe("multi-identifier customer identity", () => {
       created.customer.id,
       "WHATSAPP_USERNAME",
       null,
-      { type: "WHATSAPP_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "Safin_Ahmed") },
       "2026-08-14T06:06:00.000Z"
     );
     const changedPhone = await repository.changeIdentifier(
@@ -265,7 +297,7 @@ describe("multi-identifier customer identity", () => {
   it("supports capitalization-only updates and makes a retried confirmation harmless", async () => {
     const repository = customers();
     const created = await repository.createZeroBalance(
-      { type: "TELEGRAM_USERNAME", username: normalizeUsername("safin_ahmed") },
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "safin_ahmed") },
       707,
       "2026-08-14T06:08:00.000Z"
     );
@@ -273,14 +305,14 @@ describe("multi-identifier customer identity", () => {
       created.customer.id,
       "TELEGRAM_USERNAME",
       "safin_ahmed",
-      { type: "TELEGRAM_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "Safin_Ahmed") },
       "2026-08-14T06:09:00.000Z"
     );
     const replay = await repository.changeIdentifier(
       created.customer.id,
       "TELEGRAM_USERNAME",
       "safin_ahmed",
-      { type: "TELEGRAM_USERNAME", username: normalizeUsername("Safin_Ahmed") },
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "Safin_Ahmed") },
       "2026-08-14T06:09:00.000Z"
     );
 

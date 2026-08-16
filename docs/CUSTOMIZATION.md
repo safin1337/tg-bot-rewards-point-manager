@@ -47,64 +47,33 @@ redemption, and balance messages include them.
 ## Purchase earning policy
 
 Both earning systems are centralized under `rewards.earning`. Select the active
-system with one master switch:
-
-```ts
-earning: {
-  mode: "bracketed", // "flat" | "bracketed"
-
-  flat: {
-    policyId: "flat-50-v1",
-    spendBdt: 50,
-    earnPoints: 1
-  },
-
-  bracketed: {
-    policyId: "bracketed-50-60-70-80-100-v1",
-    pointFloorProtection: true,
-    brackets: [
-      { maxPurchaseBdt: 2_000, spendBdt: 50, earnPoints: 1 },
-      { maxPurchaseBdt: 4_000, spendBdt: 60, earnPoints: 1 },
-      { maxPurchaseBdt: 6_000, spendBdt: 70, earnPoints: 1 },
-      { maxPurchaseBdt: 25_000, spendBdt: 80, earnPoints: 1 },
-      { maxPurchaseBdt: null, spendBdt: 100, earnPoints: 1 }
-    ]
-  }
-}
-```
+system with the master `mode: "flat" | "bracketed"` switch. The authoritative
+policy IDs, ratios, ordered upper boundaries, and adjacent whole-order range
+comments are in `src/config/app-config.ts`; edit and review them there instead
+of copying a second bracket table into documentation.
 
 `mode: "bracketed"` is active in V2.0.5 and selects one rate for the complete
 purchase amount. `mode: "flat"` remains available and applies BDT 50 = 1 point
 to every positive whole-BDT purchase.
 
-| Accepted amount | Whole-order rate |
-|---:|---:|
-| BDT 1-2,000 | BDT 50 = 1 point |
-| BDT 2,001-4,000 | BDT 60 = 1 point |
-| BDT 4,001-6,000 | BDT 70 = 1 point |
-| BDT 6,001-25,000 | BDT 80 = 1 point |
-| BDT 25,001 and above | BDT 100 = 1 point |
+This is not a progressive slab system. The selected bracket's configured rate
+applies to the complete purchase; points are not calculated separately for
+earlier ranges.
 
-This is not a progressive slab system. For example, BDT 4,000 uses the 60-BDT
-rate for all BDT 4,000; it does not add points calculated separately from the
-first and second ranges.
-
-Purchase input remains positive whole-number BDT only. Values such as
-`2000.50` remain invalid. A whole-BDT calculation can still produce fractional
-points: BDT 2,002 at the 60-BDT rate is 33.366666... points. The Worker uses
-integer rational arithmetic, rounds the final earned amount half-up once to
-four decimal places, and stores 33.3667 points as 333,667 point units. Telegram
-then displays 33.37 using its separate two-decimal rule.
+Purchase input remains positive whole-number BDT only; decimal purchase values
+remain invalid. A configured whole-BDT ratio can still produce fractional
+points. The Worker uses integer rational arithmetic, rounds the final earned
+amount half-up once to four decimal places, stores point units, and applies the
+separate two-decimal Telegram display rule only at presentation time.
 
 ### Point-floor protection
 
 `pointFloorProtection` applies only in bracketed mode:
 
-- `true` prevents a higher amount from earning fewer points at a boundary. BDT
-  2,000 earns 40.0000 points; BDT 2,001 is protected at 40.0000 instead of
-  dropping to 33.3500. The award remains flat until the new rate catches up.
-- `false` applies only the selected whole-order bracket rate. BDT 2,001 then
-  earns 33.3500 points, even though BDT 2,000 earns 40.0000.
+- `true` prevents a higher amount from earning fewer points at a boundary by
+  carrying forward the highest protected preceding-boundary award.
+- `false` applies only the selected whole-order bracket rate, even when the raw
+  award drops immediately after a boundary.
 
 Protected floors are recursive: each later bracket inherits the highest award
 at every preceding boundary. Flat mode ignores this switch.
@@ -202,18 +171,18 @@ git status --short
 From PowerShell in the repository root:
 
 ```powershell
-npm ci
-npm run db:migrate:local
-npm run check
+npm.cmd ci
+npm.cmd run db:migrate:local
+npm.cmd run check
 git diff --check
 git status --short
 ```
 
-`npm run check` runs strict TypeScript, ESLint, the full Vitest suite, and a
+`npm.cmd run check` runs strict TypeScript, ESLint, the full Vitest suite, and a
 Wrangler dry-run build. It does not deploy.
 
 For branding-specific verification, temporarily customize `APP_CONFIG`, run
-the checks, start the local Worker with `npm run dev`, and inspect `/start` and
+the checks, start the local Worker with `npm.cmd run dev`, and inspect `/start` and
 `/help` only with safe local credentials. Confirm the heading, each tagline,
 HTML-like characters, help rates, and CSV prefix. Restore or commit the intended
 configuration deliberately; never use production secrets for a public test.

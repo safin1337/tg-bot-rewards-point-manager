@@ -1,12 +1,39 @@
 # Telegram active-message workflows
 
-V2.0.6 uses a hybrid message model to reduce clutter without making
+V2.0.7 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
 policy text, and CSV prefix derive from `src/config/app-config.ts`. Configurable
 values are HTML-escaped before Telegram insertion. With the default settings,
 the generated heading remains `SoulShop Rewards Point System`.
+
+## Non-text Telegram updates
+
+- Text messages and inline-button callbacks continue through their existing
+  command, workflow, stale-update, authorization, and idempotency checks.
+- A structurally valid message without a `text` field is normalized to only its
+  update ID, message ID, sender ID, and chat ID. Photos, documents, stickers,
+  video, video notes, animation, audio, voice, contacts, locations, captions,
+  file identifiers, and all other media metadata are not retained, downloaded,
+  logged, or stored.
+- Media captions are never commands or workflow values. A photo captioned
+  `/cancel`, for example, does not cancel the operation.
+- For the authorized administrator, the Worker attempts one informational
+  response explaining that text or buttons are required. The active operation,
+  step, state token, operation-start update ID, selected customer, collected
+  values, balances, transactions, receipts, and leaderboards remain unchanged.
+- The valid non-text update receives HTTP `200` even if that informational
+  `sendMessage` fails. Only safe update ID/type and sanitized Telegram
+  method/status/category metadata may be logged, and no second failure message
+  is attempted. This prevents Telegram retries from delaying later commands.
+- The administrator can immediately send the expected text, use an available
+  inline button, or use `/cancel`. `/start`, `/restart`, and operation commands
+  also continue normally after non-text input.
+- Valid irrelevant update types, such as older edited-message or channel-post
+  deliveries, receive HTTP `200` without workflow or D1 processing. Invalid
+  JSON, invalid update IDs, and malformed message/callback envelopes remain
+  non-2xx requests. Webhook-secret and payload-size checks are unchanged.
 
 ## Customer-selection context
 
@@ -29,8 +56,16 @@ the generated heading remains `SoulShop Rewards Point System`.
 - The full-number prompt is exactly:
 
   ```text
-  Enter the full WhatsApp number.
-  Spaces and hyphens are accepted.
+  Enter the customer's WhatsApp number:
+  Spaces and hyphen are accepted.
+  ```
+
+- The WhatsApp-username and Telegram-username prompts are exactly:
+
+  ```text
+  Enter the customer's WhatsApp username:
+
+  Enter the customer's Telegram username:
   ```
 
 - Add New Customer first asks for an initial identifier type, then validates and
@@ -46,6 +81,12 @@ the generated heading remains `SoulShop Rewards Point System`.
   attached to a customer. At least one must remain.
 - A single leading `@` is discarded from username input. Display capitalization
   is preserved, while exact lookup and uniqueness are case-insensitive.
+  WhatsApp additionally accepts non-leading, non-trailing, non-consecutive
+  periods; Telegram rejects periods.
+- Recognized Unicode bidirectional formatting controls are removed before
+  whitespace trimming, optional-`@` removal, length checking, and platform
+  validation. Other invisible characters remain invalid. Invalid input keeps
+  the same active input step so the next valid value succeeds without restart.
 - A change/removal confirmation stores the exact current value it displayed.
   The SQL update includes that expected value, so a later or concurrent edit is
   rejected as stale rather than overwritten.
@@ -56,6 +97,25 @@ the generated heading remains `SoulShop Rewards Point System`.
   the repository recognizes that the requested value is already current.
 - Identity management changes only alias columns and `updated_at_utc`; reward
   balances, transactions, receipts, and leaderboard aggregates are untouched.
+
+## Customer Info presentation
+
+- Full customer-specific balance, confirmation, success, history,
+  existing-customer, and identity-management messages use one shared block:
+
+  ```text
+  Customer Info:
+  WhatsApp Number: +880...
+  WhatsApp Username: @Example_Name
+  Telegram Username: @Example_Name
+  ```
+
+- Lines appear only for identifiers that exist, always in the order shown.
+  Stored capitalization is preserved, dynamic values are HTML-escaped, and no
+  `Not provided` or empty identifier line appears.
+- Search results, leaderboards, short selection panels, and purchase/manual-add
+  amount-entry prompts retain the compact primary identifier order: WhatsApp
+  number, WhatsApp username, then Telegram username.
 
 ## Latest earning transaction context
 

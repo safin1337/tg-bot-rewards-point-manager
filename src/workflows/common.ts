@@ -15,6 +15,7 @@ import {
 } from "../telegram/keyboards";
 import {
   BRAND,
+  customerInfoBlock,
   earningEntryPromptMessage,
   historyMessage,
   leaderboardMenuMessage,
@@ -268,7 +269,7 @@ export const purchaseConfirmation = (
 
 <b>Confirm Purchase</b>
 
-Customer: ${escapeHtml(customerPrimaryLabel(customer))}
+${customerInfoBlock(customer)}
 Purchase Amount: BDT ${amount}
 Points Earned: ${formatPointUnitsForDisplay(units)} points
 Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
@@ -288,7 +289,7 @@ export const pointConfirmation = (
 
 <b>Confirm ${operation === "REDEEM" ? "Redemption" : "Manual Point Addition"}</b>
 
-Customer: ${escapeHtml(customerPrimaryLabel(customer))}
+${customerInfoBlock(customer)}
 Points ${operation === "REDEEM" ? "to Redeem" : "to Add"}: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : `\nReason: ${escapeHtml(note)}`}
 Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 New Points: ${formatPointUnitsForDisplay(after)} points

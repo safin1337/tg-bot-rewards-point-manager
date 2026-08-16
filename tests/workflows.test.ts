@@ -6,7 +6,7 @@ import { CustomerRepository } from "../src/database/customer-repository";
 import { normalizePhone } from "../src/domain/phone";
 import { EARNING_POLICY_ID } from "../src/domain/rewards";
 import { readConfig } from "../src/env";
-import type { TelegramUpdate } from "../src/telegram/types";
+import { parseTelegramUpdate, type TelegramUpdate } from "../src/telegram/types";
 import { makeWorkflowContext } from "../src/workflows/context";
 
 interface ApiCall {
@@ -52,6 +52,12 @@ const message = (updateId: number, userId: number, text: string): TelegramUpdate
   updateId,
   kind: "message",
   message: { message_id: updateId, from: { id: userId }, chat: { id: userId }, text }
+});
+
+const nonTextMessage = (updateId: number, userId: number): TelegramUpdate => ({
+  updateId,
+  kind: "non_text_message",
+  message: { message_id: updateId, from: { id: userId }, chat: { id: userId } }
 });
 
 const callback = (
@@ -111,6 +117,144 @@ describe("administrator-only routing", () => {
     });
     expect((await context.states.get("999")).state).toBeNull();
   });
+
+  it("does not expose workflow or customer data to unauthorized non-text messages", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, nonTextMessage(2, 999));
+    expect((await context.states.get("999")).state).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method: "sendMessage", payload: { chat_id: 999 } });
+    expect(String(calls[0]?.payload?.text)).toContain("restricted");
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM processed_updates")
+      .first<{ count: number }>())?.count).toBe(0);
+  });
+});
+
+describe("non-text message isolation", () => {
+  it("preserves identifier input state, ignores a caption, and accepts the next valid text", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01700000001"),
+      30_000,
+      new Date().toISOString()
+    );
+    await processTelegramUpdate(context, message(30_001, 123456789, "/purchase"));
+    const initialState = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(30_002, 123456789, `mode:f:${initialState?.payload.token ?? ""}`)
+    );
+    const before = (await context.states.get("123456789")).state;
+    calls.length = 0;
+
+    const parsed = parseTelegramUpdate({
+      update_id: 30_003,
+      message: {
+        message_id: 30_003,
+        from: { id: 123456789 },
+        chat: { id: 123456789 },
+        caption: "/cancel",
+        photo: [{ fixture: true }]
+      }
+    });
+    if (parsed.disposition !== "process") throw new Error("Fixture media update was not parsed.");
+    await processTelegramUpdate(context, parsed.update);
+
+    expect((await context.states.get("123456789")).state).toEqual(before);
+    expect(calls).toEqual([{
+      method: "sendMessage",
+      payload: {
+        chat_id: 123456789,
+        text: "🏆 <b>SoulShop Rewards Point System</b>\n\n⚠️ Images and other non-text messages are not supported. Please send text, use the available buttons, or use /cancel.",
+        parse_mode: "HTML"
+      }
+    }]);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM processed_updates")
+      .first<{ count: number }>())?.count).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM transactions")
+      .first<{ count: number }>())?.count).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM mutation_receipts")
+      .first<{ count: number }>())?.count).toBe(0);
+    expect((await context.customers.findById(created.customer.id))?.pointBalanceUnits).toBe(0);
+
+    await processTelegramUpdate(context, message(30_004, 123456789, "01700000001"));
+    const afterValidText = (await context.states.get("123456789")).state;
+    expect(afterValidText).toMatchObject({
+      activeOperation: "PURCHASE",
+      currentStep: "AWAIT_PURCHASE_AMOUNT",
+      selectedCustomerId: created.customer.id,
+      operationStartedUpdateId: 30_001
+    });
+  });
+
+  it("preserves selected-customer state and balance while waiting for an amount", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01700000002"),
+      31_000,
+      new Date().toISOString()
+    );
+    await processTelegramUpdate(context, message(31_001, 123456789, "/purchase"));
+    const state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(31_002, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(31_003, 123456789, "01700000002"));
+    const before = (await context.states.get("123456789")).state;
+    const customerBefore = await context.customers.findById(created.customer.id);
+
+    await processTelegramUpdate(context, nonTextMessage(31_004, 123456789));
+
+    expect((await context.states.get("123456789")).state).toEqual(before);
+    expect(await context.customers.findById(created.customer.id)).toEqual(customerBefore);
+    expect((await context.transactions.listForCustomer(created.customer.id, 0)).transactions)
+      .toHaveLength(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM leaderboard_aggregates")
+      .first<{ count: number }>())?.count).toBe(0);
+    await processTelegramUpdate(context, message(31_005, 123456789, "500"));
+    expect((await context.states.get("123456789")).state).toMatchObject({
+      currentStep: "CONFIRM_PURCHASE",
+      selectedCustomerId: created.customer.id
+    });
+  });
+
+  it.each(["/start", "/cancel", "/restart", "/purchase"] as const)(
+    "allows %s immediately after a non-text message",
+    async (command) => {
+      const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+      await processTelegramUpdate(context, message(32_000, 123456789, "/purchase"));
+      const before = (await context.states.get("123456789")).state;
+      await processTelegramUpdate(context, nonTextMessage(32_001, 123456789));
+      expect((await context.states.get("123456789")).state).toEqual(before);
+
+      await processTelegramUpdate(context, message(32_002, 123456789, command));
+      const after = (await context.states.get("123456789")).state;
+      if (command === "/start" || command === "/cancel") {
+        expect(after).toBeNull();
+      } else {
+        expect(after).toMatchObject({
+          activeOperation: "PURCHASE",
+          currentStep: "SELECT_MODE",
+          operationStartedUpdateId: 32_002
+        });
+        expect(after?.payload.token).not.toBe(before?.payload.token);
+      }
+    }
+  );
+
+  it("keeps a newer operation intact when an older non-text update arrives", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(33_100, 123456789, "/purchase"));
+    const before = (await context.states.get("123456789")).state;
+    calls.length = 0;
+
+    await processTelegramUpdate(context, nonTextMessage(33_099, 123456789));
+
+    expect((await context.states.get("123456789")).state).toEqual(before);
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0]?.payload?.text)).toContain("non-text messages are not supported");
+  });
 });
 
 describe("stateful customer search and purchase", () => {
@@ -149,10 +293,20 @@ describe("stateful customer search and purchase", () => {
     [
       "f",
       "Selected Operation: 🛍️ Record Purchase\n\n"
-      + "Enter the full WhatsApp number.\n"
-      + "Spaces and hyphens are accepted."
+      + "Enter the customer's WhatsApp number:\n"
+      + "Spaces and hyphen are accepted."
+    ],
+    [
+      "w",
+      "Selected Operation: 🛍️ Record Purchase\n\n"
+      + "Enter the customer's WhatsApp username:"
+    ],
+    [
+      "t",
+      "Selected Operation: 🛍️ Record Purchase\n\n"
+      + "Enter the customer's Telegram username:"
     ]
-  ] as const)("shows the selected operation on the %s phone prompt", async (mode, expectedText) => {
+  ] as const)("shows the selected operation on the %s identifier prompt", async (mode, expectedText) => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     await processTelegramUpdate(context, message(6, 123456789, "/purchase"));
     const state = (await context.states.get("123456789")).state;
@@ -868,6 +1022,94 @@ describe("remaining end-to-end workflows", () => {
 });
 
 describe("multi-identifier workflows", () => {
+  it.each([
+    ["p", "Enter the customer's WhatsApp number:\nSpaces and hyphen are accepted."],
+    ["w", "Enter the customer's WhatsApp username:"],
+    ["t", "Enter the customer's Telegram username:"]
+  ] as const)("uses the standardized Add Customer %s prompt", async (code, instruction) => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await processTelegramUpdate(context, message(290, 123456789, "/addcustomer"));
+    const state = (await context.states.get("123456789")).state;
+
+    await processTelegramUpdate(
+      context,
+      callback(291, 123456789, `newid:${code}:${state?.payload.token ?? ""}`, 900)
+    );
+
+    const prompt = calls.find((call) =>
+      call.method === "editMessageText" && call.payload?.message_id === 900
+    );
+    expect(String(prompt?.payload?.text))
+      .toContain(`➕ <b>Add New Customer</b>\n\n${instruction}`);
+  });
+
+  it.each([
+    ["w", "WHATSAPP_USERNAME", "invalid\u200Bname", "\u2066@Example.Name\u2069", "Example.Name"],
+    ["t", "TELEGRAM_USERNAME", "invalid.name", "\u2066@Example_Name\u2069", "Example_Name"]
+  ] as const)(
+    "accepts a valid %s username immediately after invalid input without restart",
+    async (code, type, invalid, valid, expected) => {
+      const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+      await processTelegramUpdate(context, message(292, 123456789, "/addcustomer"));
+      let state = (await context.states.get("123456789")).state;
+      await processTelegramUpdate(
+        context,
+        callback(293, 123456789, `newid:${code}:${state?.payload.token ?? ""}`)
+      );
+      state = (await context.states.get("123456789")).state;
+      const inputToken = state?.payload.token;
+
+      await processTelegramUpdate(context, message(294, 123456789, invalid));
+      expect((await context.states.get("123456789")).state).toMatchObject({
+        currentStep: "AWAIT_ADD_CUSTOMER_IDENTITY",
+        payload: { token: inputToken, pendingIdentifierType: type }
+      });
+
+      await processTelegramUpdate(context, message(295, 123456789, valid));
+      expect((await context.states.get("123456789")).state).toMatchObject({
+        currentStep: "CONFIRM_ADD_CUSTOMER",
+        payload: { pendingIdentifierType: type, pendingIdentifierValue: expected }
+      });
+      expect(calls.some((call) => String(call.payload?.text).includes(
+        `${type === "WHATSAPP_USERNAME" ? "WhatsApp" : "Telegram"} Username: @${expected}`
+      ))).toBe(true);
+    }
+  );
+
+  it.each([
+    ["p", "Enter the customer's WhatsApp number:\nSpaces and hyphen are accepted."],
+    ["w", "Enter the customer's WhatsApp username:"],
+    ["t", "Enter the customer's Telegram username:"]
+  ] as const)("uses the standardized Manage Customer %s prompt", async (code, instruction) => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    await context.customers.createZeroBalance(
+      normalizePhone("01712345678"),
+      296,
+      "2026-08-16T06:00:00.000Z"
+    );
+    await processTelegramUpdate(context, message(297, 123456789, "/managecustomer"));
+    let state = (await context.states.get("123456789")).state;
+    await processTelegramUpdate(
+      context,
+      callback(298, 123456789, `mode:f:${state?.payload.token ?? ""}`)
+    );
+    await processTelegramUpdate(context, message(299, 123456789, "01712345678"));
+    state = (await context.states.get("123456789")).state;
+    calls.length = 0;
+
+    await processTelegramUpdate(
+      context,
+      callback(300, 123456789, `idedit:${code}:${state?.payload.token ?? ""}`, 901)
+    );
+
+    expect(calls[1]).toMatchObject({
+      method: "editMessageText",
+      payload: { message_id: 901 }
+    });
+    expect(String(calls[1]?.payload?.text))
+      .toContain(`\n\n${instruction}\n\nCurrent Value:`);
+  });
+
   it("creates a username-only customer and finds it case-insensitively while preserving display case", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     await processTelegramUpdate(context, message(300, 123456789, "/addcustomer"));
@@ -908,7 +1150,7 @@ describe("multi-identifier workflows", () => {
 
     expect((await context.states.get("123456789")).state).toBeNull();
     expect(calls.some((call) => String(call.payload?.text).includes(
-      "Customer: WhatsApp @Safin_Ahmed"
+      "Customer Info:\nWhatsApp Username: @Safin_Ahmed"
     ))).toBe(true);
   });
 

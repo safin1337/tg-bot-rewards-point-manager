@@ -2,6 +2,58 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.7] - 2026-08-16
+
+### Bug Fix
+
+- Fixed valid WhatsApp and Telegram usernames copied with invisible Unicode
+  bidirectional formatting characters being incorrectly rejected. Recognized
+  formatting controls are now safely removed before validation, allowing valid
+  usernames to be accepted without restarting the operation.
+- Fixed photos and other non-text Telegram messages being rejected with an
+  HTTP 400 webhook response, which could trigger repeated Telegram delivery
+  attempts and delay subsequent commands. Valid non-text updates are now
+  acknowledged safely without changing the active workflow.
+
+### Platform-specific usernames
+
+- Split WhatsApp and Telegram username validation while retaining one optional
+  leading `@`, display capitalization, lowercase lookup, and independent
+  case-insensitive platform namespaces.
+- Added WhatsApp period support with leading, trailing, and consecutive periods
+  rejected. Telegram usernames continue to reject periods.
+- Added migration `0008_allow_whatsapp_username_period.sql` using a
+  dependency-aware customer-table rebuild that preserves identifiers, customer
+  IDs, balances, transactions, receipts, leaderboards, conversation state,
+  timestamps, indexes, uniqueness, and foreign keys.
+
+### Customer messages and prompts
+
+- Added one shared conditional `Customer Info:` formatter for full balance,
+  confirmation, success, history, existing-customer, and customer-management
+  messages. Empty identifier lines and `Not provided` placeholders are omitted.
+- Standardized WhatsApp number, WhatsApp username, and Telegram username input
+  prompts across customer search, creation, and management while retaining
+  operation headings and navigation.
+- Preserved configured branding and taglines, exact reward lines, compact
+  primary identifiers in lists and amount-entry panels, and the rule that
+  redemption messages never contain `Congratulations`.
+
+### Documentation and validation
+
+- Added adjacent whole-order range comments to the configured earning brackets
+  without changing policy values or runtime behavior, and removed duplicated
+  bracket values from the historical V2.0.5 changelog wording.
+- Updated installation, upgrade, database, username, prompt, and Customer Info
+  documentation for V2.0.7.
+- Added normalization, invalid-retry, platform-validation, exact-message, and
+  representative pre-0008 data-preservation migration regression tests.
+- Added parser, HTTP acknowledgement, notification-failure, caption-isolation,
+  workflow-state, follow-up-command, and non-mutation regression tests for
+  non-text Telegram updates.
+- No production migration, deployment, webhook update, command registration,
+  commit, push, or tag was performed by this work.
+
 ## [2.0.6] - 2026-08-14
 
 ### Multi-identifier customers
@@ -52,11 +104,10 @@ All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are docum
 
 - Added a master `rewards.earning.mode` switch in `APP_CONFIG` with `"flat"`
   and `"bracketed"` options. V2.0.5 activates the bracketed whole-order policy;
-  the alternative flat policy preserves BDT 50 = 1 point for every positive
-  whole-BDT purchase.
-- Added the configurable whole-order brackets BDT 1-2,000 at 50:1, BDT
-  2,001-4,000 at 60:1, BDT 4,001-6,000 at 70:1, BDT 6,001-25,000 at 80:1,
-  and BDT 25,001+ at 100:1. This is not a progressive slab calculation.
+  the alternative flat policy remains available through the centralized
+  configuration.
+- Added configurable whole-order earning brackets defined in
+  `src/config/app-config.ts`. This is not a progressive slab calculation.
 - Added the independent `pointFloorProtection` switch. When enabled, each
   later bracket inherits the highest award at preceding boundaries so spending
   more never reduces earned points; when disabled, the selected bracket rate

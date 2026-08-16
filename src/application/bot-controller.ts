@@ -1,5 +1,10 @@
 import type { TelegramUpdate } from "../telegram/types";
-import { BRAND, BRAND_NAME_HTML, dashboardMessage } from "../telegram/messages";
+import {
+  BRAND,
+  BRAND_NAME_HTML,
+  dashboardMessage,
+  unsupportedNonTextMessage
+} from "../telegram/messages";
 import { dashboardKeyboard } from "../telegram/keyboards";
 import { handleCallback } from "../workflows/callback-handler";
 import { extractCommand, handleCommand } from "../workflows/command-handler";
@@ -14,6 +19,17 @@ export const processTelegramUpdate = async (
   context: WorkflowContext,
   update: TelegramUpdate
 ): Promise<void> => {
+  if (update.kind === "non_text_message") {
+    const userId = String(update.message.from.id);
+    const chatId = update.message.chat.id;
+    if (userId !== context.config.adminTelegramId) {
+      await context.telegram.sendMessage(chatId, unauthorizedMessage);
+      return;
+    }
+    await context.telegram.sendMessage(chatId, unsupportedNonTextMessage());
+    return;
+  }
+
   if (update.kind === "callback") {
     const userId = String(update.callbackQuery.from.id);
     if (userId !== context.config.adminTelegramId) {

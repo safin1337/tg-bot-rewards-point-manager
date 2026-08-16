@@ -1,6 +1,6 @@
 # Fresh Installation Guide
 
-This is the authoritative, detailed setup guide for installing V2.0.6 in a new
+This is the authoritative, detailed setup guide for installing V2.0.7 in a new
 Cloudflare account and connecting a new Telegram bot. Start with the project
 overview and business rules in the [README](../README.md). For branding and
 reward-policy changes, also read [CUSTOMIZATION.md](CUSTOMIZATION.md).
@@ -63,18 +63,18 @@ git --version
 
 ## 2. Open and install
 
-For a fresh Git checkout, clone the repository, select the V2.0.6 release, and
+For a fresh Git checkout, clone the repository, select the V2.0.7 release, and
 install the exact dependencies recorded in `package-lock.json`:
 
 ```powershell
 git clone <YOUR_REPOSITORY_URL>
 Set-Location "<CLONED_PROJECT_DIRECTORY>"
-git checkout v2.0.6
+git checkout v2.0.7
 code .
 npm.cmd ci
 ```
 
-If the project is already downloaded and checked out at V2.0.6, open PowerShell
+If the project is already downloaded and checked out at V2.0.7, open PowerShell
 in that directory and run:
 
 ```powershell
@@ -151,7 +151,7 @@ npm run db:migrate:remote
 
 The migrations create authoritative unbounded customers, retained transactions, conversation state, bounded processed exports and mutation/reset receipts, plus leaderboard periods/aggregates. They also add suffix/history/retention/top-10 indexes, database constraints, resumable export progress, and the workflow update-order boundary.
 
-V2.0.6 adds `0007_multi_identifier_customers.sql`. It preserves existing
+V2.0.6 added `0007_multi_identifier_customers.sql`. It preserves existing
 customer IDs, phones, balances, retained transactions, receipts, and
 leaderboards while adding WhatsApp/Telegram username aliases and rebuilding
 foreign-key-dependent tables. Existing installations must take a protected D1
@@ -161,6 +161,13 @@ export before applying it, verify all copy/foreign-key checks, apply migration
 verification, and rollback. The older
 [V2.0.5 release guide](V2.0.5-RELEASE.md) remains as release history, and the
 [V2.0.3 runbook](V2.0.3-RELEASE.md) remains as release history.
+
+V2.0.7 adds `0008_allow_whatsapp_username_period.sql`. Fresh installations
+apply it with all preceding migrations. Existing V2.0.6 installations must
+take a protected D1 export, compare pre/post row and value totals, apply 0008
+before deploying the V2.0.7 Worker, and verify foreign keys. Follow the
+mandatory [V2.0.7 release guide](V2.0.7-RELEASE.md); no production migration is
+performed automatically.
 
 For V2.0.2, review [the bounded-storage hotfix runbook](V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 
@@ -345,14 +352,14 @@ Using only the configured administrator account:
 1. `/start` displays all dashboard actions.
 2. Record Purchase uses `🛍️`, and Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. Selecting phone suffix, full phone, WhatsApp username, or Telegram username search repeats the selected operation above the relevant entry copy, and customer-search screens use the compact `⬅️ Back` button.
-4. `/addcustomer` asks for an initial identifier type; verify phone creation and username-only creation both start at zero points with no reward transaction. A leading username `@` is discarded while capitalization remains visible.
-5. `/purchase` finds the customer by four or five final digits, shows the newest retained purchase or manual addition while skipping redemptions, rejects decimal BDT input, and follows the active centralized mode. Verify that a displayed purchase includes its purchase amount and that a customer without eligible retained data shows `No Prior Data Found!`. With the V2.0.5 bracketed mode, verify 2,000/2,001, 4,000/4,001, 6,000/6,001, and 25,000/25,001 boundaries plus the configured floor behavior. In an isolated flat-mode test, BDT 50 records exactly 1 point and BDT 500 records exactly 10 points.
+4. `/addcustomer` asks for an initial identifier type; verify phone creation and username-only creation both start at zero points with no reward transaction. A leading username `@` is discarded while capitalization remains visible. Verify the standardized phone/WhatsApp-username/Telegram-username prompts, copied bidirectional-control cleanup, valid WhatsApp periods, Telegram period rejection, and a valid retry immediately after invalid input.
+5. `/purchase` finds the customer by four or five final digits, shows the newest retained purchase or manual addition while skipping redemptions, rejects decimal BDT input, and follows the active centralized mode. Verify that a displayed purchase includes its purchase amount and that a customer without eligible retained data shows `No Prior Data Found!`. Test every configured bracket boundary and floor behavior using the authoritative values in `src/config/app-config.ts`; also verify the alternative flat policy in an isolated configuration test.
 6. `/addpoints` shows the same newest retained earning context, including a safely escaped manual-add reason when present, then adds a fractional value and labels the resulting total as the updated reward balance.
 7. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values. Verify that `Redeem All Points` still requires confirmation and reduces an exact balance with hidden third/fourth decimal precision to `0.00` without an insufficient-balance error.
 8. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
 9. `/history` shows newest-first entries in Asia/Dhaka time.
 10. `/export` sends the selected CSV file(s).
-11. `/managecustomer` finds one D1 customer by any alias; add/change/remove each alias type, reject a same-platform duplicate, preserve capitalization-only username changes, and block removal of the final alias. Confirm balances/history/leaderboards stay unchanged.
+11. `/managecustomer` finds one D1 customer by any alias; add/change/remove each alias type, reject a same-platform duplicate, preserve capitalization-only username changes, and block removal of the final alias. Confirm balances/history/leaderboards stay unchanged and full customer-specific screens show only existing identifiers in the ordered `Customer Info:` block.
 12. `/leaderboard` shows the five supported period views, identifier-aware top-10 rankings, and independent reset confirmations.
 13. Reset Current Week leaves monthly totals unchanged; Reset Current Month leaves weekly totals unchanged.
 14. `/restart` drops collected values and restarts the same operation.

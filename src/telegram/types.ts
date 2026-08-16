@@ -13,6 +13,12 @@ export interface TelegramMessage {
   text: string;
 }
 
+export interface TelegramNonTextMessage {
+  message_id: number;
+  from: TelegramUser;
+  chat: TelegramChat;
+}
+
 export interface TelegramCallbackQuery {
   id: string;
   from: TelegramUser;
@@ -25,7 +31,13 @@ export interface TelegramCallbackQuery {
 
 export type TelegramUpdate =
   | { updateId: number; kind: "message"; message: TelegramMessage }
+  | { updateId: number; kind: "non_text_message"; message: TelegramNonTextMessage }
   | { updateId: number; kind: "callback"; callbackQuery: TelegramCallbackQuery };
+
+export type TelegramUpdateParseResult =
+  | { disposition: "process"; update: TelegramUpdate }
+  | { disposition: "ignore"; updateId: number }
+  | { disposition: "malformed" };
 
 export interface InlineButton {
   text: string;
@@ -56,26 +68,28 @@ const parseChat = (value: unknown): TelegramChat | null => {
   return row !== null && safeInteger(row.id) ? { id: row.id } : null;
 };
 
-const parseMessage = (value: unknown): TelegramMessage | null => {
+const parseMessageEnvelope = (value: unknown): TelegramNonTextMessage | null => {
   const row = record(value);
-  if (row === null || !safeInteger(row.message_id) || typeof row.text !== "string") return null;
+  if (row === null || !safeInteger(row.message_id)) return null;
   const from = parseUser(row.from);
   const chat = parseChat(row.chat);
   return from === null || chat === null
     ? null
-    : { message_id: row.message_id, from, chat, text: row.text };
+    : { message_id: row.message_id, from, chat };
 };
 
 const parseCallback = (value: unknown): TelegramCallbackQuery | null => {
   const row = record(value);
   if (row === null || typeof row.id !== "string" || typeof row.data !== "string") return null;
   const from = parseUser(row.from);
-  const messageRow = record(row.message);
-  const chat = messageRow === null ? null : parseChat(messageRow.chat);
   if (from === null) return null;
-  const message = messageRow !== null && chat !== null && safeInteger(messageRow.message_id)
-    ? { message_id: messageRow.message_id, chat }
-    : null;
+  let message: TelegramCallbackQuery["message"] = null;
+  if ("message" in row) {
+    const messageRow = record(row.message);
+    const chat = messageRow === null ? null : parseChat(messageRow.chat);
+    if (messageRow === null || chat === null || !safeInteger(messageRow.message_id)) return null;
+    message = { message_id: messageRow.message_id, chat };
+  }
   return {
     id: row.id,
     from,
@@ -84,12 +98,42 @@ const parseCallback = (value: unknown): TelegramCallbackQuery | null => {
   };
 };
 
-export const parseTelegramUpdate = (value: unknown): TelegramUpdate | null => {
+export const parseTelegramUpdate = (value: unknown): TelegramUpdateParseResult => {
   const row = record(value);
-  if (row === null || !safeInteger(row.update_id)) return null;
-  const message = parseMessage(row.message);
-  if (message !== null) return { updateId: row.update_id, kind: "message", message };
-  const callbackQuery = parseCallback(row.callback_query);
-  if (callbackQuery !== null) return { updateId: row.update_id, kind: "callback", callbackQuery };
-  return null;
+  if (row === null || !safeInteger(row.update_id)) return { disposition: "malformed" };
+  const hasMessage = "message" in row;
+  const hasCallback = "callback_query" in row;
+  if (hasMessage && hasCallback) return { disposition: "malformed" };
+  if (hasMessage) {
+    const message = parseMessageEnvelope(row.message);
+    if (message === null) return { disposition: "malformed" };
+    const messageRow = record(row.message);
+    if (messageRow === null) return { disposition: "malformed" };
+    if ("text" in messageRow) {
+      if (typeof messageRow.text !== "string") return { disposition: "malformed" };
+      return {
+        disposition: "process",
+        update: {
+          updateId: row.update_id,
+          kind: "message",
+          message: { ...message, text: messageRow.text }
+        }
+      };
+    }
+    return {
+      disposition: "process",
+      update: { updateId: row.update_id, kind: "non_text_message", message }
+    };
+  }
+  if (hasCallback) {
+    const callbackQuery = parseCallback(row.callback_query);
+    return callbackQuery === null
+      ? { disposition: "malformed" }
+      : {
+        disposition: "process",
+        update: { updateId: row.update_id, kind: "callback", callbackQuery }
+      };
+  }
+  if (Object.keys(row).length === 1) return { disposition: "malformed" };
+  return { disposition: "ignore", updateId: row.update_id };
 };

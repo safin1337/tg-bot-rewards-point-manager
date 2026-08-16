@@ -82,7 +82,9 @@ Telegram messages and CSV documents
 The Worker exposes:
 
 - `GET /health`: returns only `{"status":"ok"}`.
-- `POST /webhook`: accepts validated Telegram messages and callback queries.
+- `POST /webhook`: processes validated text messages and callback queries,
+  safely acknowledges valid non-text and irrelevant Telegram updates, and
+  rejects malformed requests.
 - Other methods and routes return safe `404` or `405` responses.
 
 The source is split into domain calculations, validated D1 repositories, atomic application services, Telegram transport and templates, workflow routing, and exports.
@@ -91,10 +93,9 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 
 - `1 point = 10,000 point units`.
 - V2.0.5 centralizes both `flat` and `bracketed` earning modes in `APP_CONFIG`.
-- V2.0.5 ships with `bracketed` mode active. It applies one rate to the complete
-  purchase: BDT
-  1-2,000 at 50:1, 2,001-4,000 at 60:1, 4,001-6,000 at 70:1, 6,001-25,000 at
-  80:1, and 25,001+ at 100:1. It is not progressive.
+- V2.0.5 ships with `bracketed` mode active. It selects one configured rate for
+  the complete purchase and is not progressive. The authoritative boundaries,
+  ratios, and adjacent range comments are in `src/config/app-config.ts`.
 - The alternative `flat` mode applies `BDT 50 spent = 1 point` to every positive
   whole-BDT purchase.
 - Bracketed `pointFloorProtection` is independently configurable. When enabled,
@@ -126,14 +127,21 @@ The source is split into domain calculations, validated D1 repositories, atomic 
   receipts, and leaderboard aggregates continue to reference that ID.
 - A customer has up to one WhatsApp phone, one WhatsApp username, and one
   Telegram username, with at least one of the three always required.
-- Usernames accept `A-Z`, `a-z`, `0-9`, and `_` up to 64 characters. A single
-  leading `@` is ignored for storage and lookup.
+- Both username types accept `A-Z`, `a-z`, `0-9`, and `_` up to 64 characters.
+  WhatsApp usernames additionally accept single periods between non-period
+  groups; leading, trailing, and consecutive periods are rejected. Telegram
+  usernames continue to reject periods. A single leading `@` is ignored for
+  storage and lookup.
 - Entered capitalization is retained for display, but username lookup and
   uniqueness are case-insensitive. `Safin_Ahmed`, `safin_ahmed`, and
   `SAFIN_AHMED` are the same alias on one platform.
 - WhatsApp and Telegram uniqueness are independent, so the same text may be
   owned once on each platform. A duplicate within one platform is rejected;
   customers are never merged automatically.
+- Recognized Unicode bidirectional formatting controls copied around or within
+  a username are removed before trimming and validation. Other invisible or
+  unsupported Unicode characters remain invalid, and a corrected retry can
+  continue the same workflow without `/restart`.
 - `/managecustomer` adds, changes, or removes aliases. Confirmations are bound
   to the exact current value so a concurrent change cannot be overwritten.
 - Identity changes do not create reward transactions or change balances,
@@ -163,6 +171,10 @@ Purchase and manual-add results label the post-transaction total as the
 `updated reward balance`; balance checks use `current reward balance`.
 Redemption results separately label the redeemed amount/value and the remaining
 balance/value. These customer-facing labels do not change reward calculations.
+Full customer-specific messages use a conditional `Customer Info:` block in
+WhatsApp number, WhatsApp username, then Telegram username order. Missing lines
+are omitted; compact lists, leaderboards, selection screens, and amount-entry
+prompts continue to use one primary identifier.
 
 ## Leaderboard rules
 
@@ -207,6 +219,27 @@ Full Number` is selected, the number-entry prompt repeats the active operation
 above its instructions. Customer-search navigation uses the compact
 `⬅️ Back` label.
 
+Only text messages are accepted as commands or typed workflow values. Images,
+documents, stickers, video, audio, voice, contacts, locations, and other
+non-text messages are not downloaded or stored, and their captions are never
+executed as commands or treated as input. A non-text message leaves the active
+operation, step, token, selected customer, and collected values unchanged. The
+Worker attempts one informational response, then acknowledges the valid update
+with HTTP `200` even if that Telegram response fails, preventing retry loops
+from delaying later commands. Continue by sending the expected text, using an
+available inline button, or using `/cancel`.
+
+Full identifier entry uses these shared prompt contracts:
+
+```text
+Enter the customer's WhatsApp number:
+Spaces and hyphen are accepted.
+
+Enter the customer's WhatsApp username:
+
+Enter the customer's Telegram username:
+```
+
 After a customer is selected for Record Purchase or Add Points, the amount-entry
 panel shows the newest retained earning transaction (`PURCHASE` or
 `MANUAL_ADD`) and skips redemptions. Purchase entries include the purchase
@@ -235,13 +268,15 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.6 release guide](docs/V2.0.6-RELEASE.md).
+[V2.0.7 release guide](docs/V2.0.7-RELEASE.md).
 
 ## Security summary
 
 - One administrator ID is checked before any customer query or mutation.
 - The webhook secret header is required.
-- Telegram updates, callback values, D1 rows, state JSON, point inputs, and phones are validated.
+- Telegram updates are classified as text, callback, non-text, ignored, or
+  malformed before application routing. Callback values, D1 rows, state JSON,
+  point inputs, and phones are validated.
 - Balance, detailed transaction, applicable leaderboard totals, completed receipt, paired pruning, and the mutation high-water mark are one atomic D1 batch guarded by the expected balance.
 - Retained receipts reject duplicate Telegram updates; the per-customer high-water mark rejects older updates after receipt pruning.
 - Callback panels are edited in place where chronologically safe; a failed edit falls back to one new message without changing the committed business result.

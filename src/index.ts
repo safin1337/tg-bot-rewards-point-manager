@@ -32,17 +32,38 @@ const safeLogFailure = (update: TelegramUpdate, error: unknown): void => {
   console.error(JSON.stringify(logEntry));
 };
 
+const safeLogNonTextNotificationFailure = (
+  update: Extract<TelegramUpdate, { kind: "non_text_message" }>,
+  error: unknown
+): void => {
+  const logEntry: Record<string, string | number | null> = {
+    message: "Unable to send the non-text Telegram update notice.",
+    updateId: update.updateId,
+    updateType: update.kind,
+    category: error instanceof TelegramApiError
+      ? "telegram_api"
+      : error instanceof Error
+        ? "application"
+        : "unknown"
+  };
+  if (error instanceof TelegramApiError) {
+    logEntry.telegramMethod = error.method;
+    logEntry.telegramStatus = error.status;
+  }
+  console.error(JSON.stringify(logEntry));
+};
+
 const trySendFailure = async (
   context: WorkflowContext,
   update: TelegramUpdate,
   originalError: unknown
 ): Promise<void> => {
   if (originalError instanceof TelegramApiError) return;
-  const userId = update.kind === "message" ? update.message.from.id : update.callbackQuery.from.id;
+  const userId = update.kind === "callback" ? update.callbackQuery.from.id : update.message.from.id;
   if (String(userId) !== context.config.adminTelegramId) return;
-  const chatId = update.kind === "message"
-    ? update.message.chat.id
-    : update.callbackQuery.message?.chat.id ?? update.callbackQuery.from.id;
+  const chatId = update.kind === "callback"
+    ? update.callbackQuery.message?.chat.id ?? update.callbackQuery.from.id
+    : update.message.chat.id;
   try {
     await context.telegram.sendMessage(
       chatId,
@@ -57,7 +78,11 @@ const trySendFailure = async (
   }
 };
 
-const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
+export const handleWebhook = async (
+  request: Request,
+  env: Env,
+  fetcher: typeof fetch = fetch
+): Promise<Response> => {
   let config;
   try {
     config = readConfig(env);
@@ -81,12 +106,24 @@ const handleWebhook = async (request: Request, env: Env): Promise<Response> => {
   } catch {
     return json({ error: "Malformed JSON" }, 400);
   }
-  const update = parseTelegramUpdate(body);
-  if (update === null) {
-    return json({ error: "Unsupported Telegram update" }, 400);
+  const parsed = parseTelegramUpdate(body);
+  if (parsed.disposition === "malformed") {
+    return json({ error: "Malformed Telegram update" }, 400);
+  }
+  if (parsed.disposition === "ignore") return json({ ok: true }, 200);
+  const update = parsed.update;
+
+  if (update.kind === "non_text_message") {
+    try {
+      const context = makeWorkflowContext(env.DB, config, fetcher);
+      await processTelegramUpdate(context, update);
+    } catch (error: unknown) {
+      safeLogNonTextNotificationFailure(update, error);
+    }
+    return json({ ok: true }, 200);
   }
 
-  const context = makeWorkflowContext(env.DB, config);
+  const context = makeWorkflowContext(env.DB, config, fetcher);
   try {
     await processTelegramUpdate(context, update);
     return json({ ok: true }, 200);

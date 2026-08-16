@@ -5,16 +5,28 @@ import { dhakaDate, formatDhakaDateTime } from "../src/utils/time";
 import { normalizeUsername } from "../src/domain/customer-identity";
 import {
   addCustomerSuccessMessage,
+  addCustomerConfirmationMessage,
   balanceMessage,
+  createCustomerForOperationConfirmationMessage,
+  customerInfoBlock,
   earningEntryPromptMessage,
   fullNumberSearchPrompt,
   historyMessage,
+  identifierInputPromptText,
+  identityChangeConfirmationMessage,
+  identityChangeSuccessMessage,
+  identityRemoveConfirmationMessage,
   manualAddSuccessMessage,
+  manageCustomerMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage,
   selectionMessage,
-  suffixSearchPrompt
+  suffixSearchPrompt,
+  unsupportedNonTextMessage,
+  existingCustomerMessage,
+  usernameSearchPrompt
 } from "../src/telegram/messages";
+import { pointConfirmation, purchaseConfirmation } from "../src/workflows/common";
 import {
   customerActionsKeyboard,
   historyKeyboard,
@@ -39,26 +51,61 @@ const customer: Customer = {
   updatedAtUtc: "2026-07-29T09:30:00.000Z"
 };
 
+describe("non-text informational message", () => {
+  it("uses the configured escaped heading and exact safe instruction", () => {
+    expect(unsupportedNonTextMessage()).toBe(
+      "🏆 <b>SoulShop Rewards Point System</b>\n\n"
+      + "⚠️ Images and other non-text messages are not supported. "
+      + "Please send text, use the available buttons, or use /cancel."
+    );
+  });
+});
+
 describe("username normalization", () => {
-  it("removes one leading @, preserves display capitalization, and lowers only lookup", () => {
-    expect(normalizeUsername(" @Safin_Ahmed ")).toEqual({
+  it("removes copied directional controls and one leading @ while preserving capitalization", () => {
+    expect(normalizeUsername("WHATSAPP_USERNAME", "\u2066 @Safin_Ahmed \u2069")).toEqual({
       display: "Safin_Ahmed",
       lookup: "safin_ahmed"
     });
   });
 
-  it.each(["@", "@@safin", "safin-ahmed", "safin ahmed", "a".repeat(65)])(
-    "rejects invalid username %s",
-    (username) => {
-      expect(() => normalizeUsername(username)).toThrow(/username/i);
-    }
+  it("removes every recognized bidirectional formatting control wherever copied", () => {
+    const controls = "\u061C\u200E\u200F\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069";
+    expect(normalizeUsername("TELEGRAM_USERNAME", `${controls}@Example${controls}_User${controls}`))
+      .toEqual({ display: "Example_User", lookup: "example_user" });
+  });
+
+  it.each(["\u200Bhidden", "hidden\u2060", "emoji🙂", "two words", "@@safin", "\u2066\u2069"])(
+    "rejects unsupported or empty cleaned username %s",
+    (username) => expect(() => normalizeUsername("WHATSAPP_USERNAME", username)).toThrow(/WhatsApp username/i)
   );
+
+  it.each(["safin.ahmed", "Safin_Ahmed", "safin_a.ahmed01"])(
+    "accepts valid WhatsApp username %s",
+    (username) => expect(normalizeUsername("WHATSAPP_USERNAME", username).display).toBe(username)
+  );
+
+  it.each([".safin", "safin.", "safin..ahmed", "safin-ahmed", "a".repeat(65)])(
+    "rejects invalid WhatsApp username %s",
+    (username) => expect(() => normalizeUsername("WHATSAPP_USERNAME", username)).toThrow(/WhatsApp username/i)
+  );
+
+  it("keeps platform rules separate by rejecting periods for Telegram", () => {
+    expect(() => normalizeUsername("TELEGRAM_USERNAME", "safin.ahmed"))
+      .toThrow(/Telegram username/i);
+  });
 });
 
 const customerWithLargeBalance: Customer = {
   ...customer,
   pointBalanceUnits: 13_567_000,
   roundedRewardBdt: 339
+};
+
+const customerWithAllIdentifiers: Customer = {
+  ...customerWithLargeBalance,
+  whatsappUsername: "Example_Name",
+  telegramUsername: "Telegram_Name"
 };
 
 const transaction: RewardTransaction = {
@@ -124,7 +171,8 @@ describe("required branded messages", () => {
     ["MANUAL_ADD", "➕ <b>Add Points Manually</b>"],
     ["REDEEM", "🎁 <b>Redeem Points</b>"],
     ["BALANCE", "💰 <b>Check Balance</b>"],
-    ["HISTORY", "📜 <b>Customer History</b>"]
+    ["HISTORY", "📜 <b>Customer History</b>"],
+    ["MANAGE_CUSTOMER", "🪪 <b>Manage Customer Identities</b>"]
   ] as const)("identifies the %s operation on its customer-selection panel", (operation, heading) => {
     expect(selectionMessage(operation)).toBe(
       `🏆 <b>SoulShop Rewards Point System</b>\n\n${heading}\n\nSelect a customer:`
@@ -136,8 +184,9 @@ describe("required branded messages", () => {
     ["MANUAL_ADD", "➕ Add Points Manually"],
     ["REDEEM", "🎁 Redeem Points"],
     ["BALANCE", "💰 Check Balance"],
-    ["HISTORY", "📜 Customer History"]
-  ] as const)("identifies the selected %s operation on both phone prompts", (operation, label) => {
+    ["HISTORY", "📜 Customer History"],
+    ["MANAGE_CUSTOMER", "🪪 Manage Customer Identities"]
+  ] as const)("identifies the selected %s operation on all identifier prompts", (operation, label) => {
     expect(suffixSearchPrompt(operation)).toBe(
       `Selected Operation: ${label}\n\n`
       + "Enter the last 4 or 5 digits of the WhatsApp No.\n"
@@ -145,9 +194,86 @@ describe("required branded messages", () => {
     );
     expect(fullNumberSearchPrompt(operation)).toBe(
       `Selected Operation: ${label}\n\n`
-      + "Enter the full WhatsApp number.\n"
-      + "Spaces and hyphens are accepted."
+      + "Enter the customer's WhatsApp number:\n"
+      + "Spaces and hyphen are accepted."
     );
+    expect(usernameSearchPrompt(operation, "WHATSAPP_USERNAME")).toBe(
+      `Selected Operation: ${label}\n\nEnter the customer's WhatsApp username:`
+    );
+    expect(usernameSearchPrompt(operation, "TELEGRAM_USERNAME")).toBe(
+      `Selected Operation: ${label}\n\nEnter the customer's Telegram username:`
+    );
+  });
+
+  it("defines the three standardized identifier instructions exactly", () => {
+    expect(identifierInputPromptText("WHATSAPP_PHONE")).toBe(
+      "Enter the customer's WhatsApp number:\nSpaces and hyphen are accepted."
+    );
+    expect(identifierInputPromptText("WHATSAPP_USERNAME"))
+      .toBe("Enter the customer's WhatsApp username:");
+    expect(identifierInputPromptText("TELEGRAM_USERNAME"))
+      .toBe("Enter the customer's Telegram username:");
+  });
+
+  it("formats conditional Customer Info in fixed order and escapes every value", () => {
+    expect(customerInfoBlock({
+      whatsappNumber: "+8801712345678",
+      whatsappUsername: "Example_Name",
+      telegramUsername: "Telegram_Name"
+    })).toBe(
+      "Customer Info:\n"
+      + "WhatsApp Number: +8801712345678\n"
+      + "WhatsApp Username: @Example_Name\n"
+      + "Telegram Username: @Telegram_Name"
+    );
+    expect(customerInfoBlock({
+      whatsappNumber: null,
+      whatsappUsername: "Name_With_<tag>",
+      telegramUsername: null
+    })).toBe("Customer Info:\nWhatsApp Username: @Name_With_&lt;tag&gt;");
+    expect(() => customerInfoBlock({
+      whatsappNumber: null,
+      whatsappUsername: null,
+      telegramUsername: null
+    })).toThrow(/no identifier/i);
+  });
+
+  it("uses the full Customer Info block across customer-specific messages", () => {
+    const expected = "Customer Info:\n"
+      + "WhatsApp Number: +8801712345678\n"
+      + "WhatsApp Username: @Example_Name\n"
+      + "Telegram Username: @Telegram_Name";
+    const messages = [
+      balanceMessage(customerWithAllIdentifiers),
+      purchaseConfirmation(customerWithAllIdentifiers, 500, 100_000),
+      purchaseSuccessMessage(customerWithAllIdentifiers, 500, 100_000),
+      pointConfirmation(customerWithAllIdentifiers, "MANUAL_ADD", 10_000, null),
+      manualAddSuccessMessage(customerWithAllIdentifiers, 10_000, null),
+      pointConfirmation(customerWithAllIdentifiers, "REDEEM", 10_000, null),
+      redemptionSuccessMessage(customerWithAllIdentifiers, 10_000, 0),
+      historyMessage(customerWithAllIdentifiers, [], 0),
+      addCustomerSuccessMessage(customerWithAllIdentifiers),
+      existingCustomerMessage(customerWithAllIdentifiers),
+      manageCustomerMessage(customerWithAllIdentifiers),
+      identityChangeConfirmationMessage(customerWithAllIdentifiers, "WHATSAPP_USERNAME", "Next_Name"),
+      identityRemoveConfirmationMessage(customerWithAllIdentifiers, "TELEGRAM_USERNAME"),
+      identityChangeSuccessMessage(customerWithAllIdentifiers, "TELEGRAM_USERNAME", false, false)
+    ];
+    for (const message of messages) {
+      expect(message).toContain(expected);
+      expect(message).not.toContain("Not provided");
+    }
+  });
+
+  it("uses Customer Info for both new-customer confirmation paths", () => {
+    const identifier = {
+      type: "WHATSAPP_USERNAME" as const,
+      username: normalizeUsername("WHATSAPP_USERNAME", "Example.Name")
+    };
+    expect(addCustomerConfirmationMessage(identifier))
+      .toContain("Customer Info:\nWhatsApp Username: @Example.Name");
+    expect(createCustomerForOperationConfirmationMessage(identifier))
+      .toContain("Customer Info:\nWhatsApp Username: @Example.Name");
   });
 
   it("shows the latest purchase above the purchase amount prompt", () => {

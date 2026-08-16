@@ -10,7 +10,11 @@ import type {
   TransactionType,
   WorkflowStep
 } from "../types/models";
-import type { CustomerIdentifierType } from "../domain/customer-identity";
+import {
+  isValidStoredUsername,
+  type CustomerIdentifierType,
+  type UsernameIdentifierType
+} from "../domain/customer-identity";
 
 type Row = Record<string, unknown>;
 
@@ -86,9 +90,13 @@ const nullableNormalizedPhoneField = (row: Row, key: string): string | null => {
   return value;
 };
 
-const nullableUsernameField = (row: Row, key: string): string | null => {
+const nullableUsernameField = (
+  row: Row,
+  key: string,
+  type: UsernameIdentifierType
+): string | null => {
   const value = nullableStringField(row, key);
-  if (value !== null && (value.length > 64 || !/^[A-Za-z0-9_]+$/.test(value))) {
+  if (value !== null && !isValidStoredUsername(type, value)) {
     throw new Error("Invalid database username.");
   }
   return value;
@@ -229,8 +237,16 @@ export const mapCustomer = (value: unknown): Customer => {
   const whatsappNumber = nullableNormalizedPhoneField(row, "whatsapp_number");
   const phoneLast4 = nullableStringField(row, "phone_last4");
   const phoneLast5 = nullableStringField(row, "phone_last5");
-  const whatsappUsername = nullableUsernameField(row, "whatsapp_username");
-  const telegramUsername = nullableUsernameField(row, "telegram_username");
+  const whatsappUsername = nullableUsernameField(
+    row,
+    "whatsapp_username",
+    "WHATSAPP_USERNAME"
+  );
+  const telegramUsername = nullableUsernameField(
+    row,
+    "telegram_username",
+    "TELEGRAM_USERNAME"
+  );
   if (
     (whatsappNumber === null
       ? phoneLast4 !== null || phoneLast5 !== null
@@ -326,8 +342,16 @@ export const mapLeaderboardEntry = (value: unknown): LeaderboardEntry => {
   return {
     customerId: positiveIntegerField(row, "customer_id"),
     whatsappNumber: nullableNormalizedPhoneField(row, "whatsapp_number"),
-    whatsappUsername: nullableUsernameField(row, "whatsapp_username"),
-    telegramUsername: nullableUsernameField(row, "telegram_username"),
+    whatsappUsername: nullableUsernameField(
+      row,
+      "whatsapp_username",
+      "WHATSAPP_USERNAME"
+    ),
+    telegramUsername: nullableUsernameField(
+      row,
+      "telegram_username",
+      "TELEGRAM_USERNAME"
+    ),
     earnedPointUnits: positiveIntegerField(row, "earned_point_units"),
     firstQualifyingEarningAtUtc: isoUtcField(row, "first_qualifying_earning_at_utc")
   };

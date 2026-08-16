@@ -26,8 +26,11 @@ import {
 } from "../telegram/keyboards";
 import {
   BRAND,
+  addCustomerConfirmationMessage,
+  createCustomerForOperationConfirmationMessage,
   existingCustomerMessage,
-  identityChangeConfirmationMessage
+  identityChangeConfirmationMessage,
+  manageCustomerMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { ConversationState } from "../types/models";
@@ -45,7 +48,7 @@ const parseIdentifier = (
   text: string
 ): CustomerIdentifierInput => type === "WHATSAPP_PHONE"
   ? { type, phone: normalizePhone(text) }
-  : { type, username: normalizeUsername(text) };
+  : { type, username: normalizeUsername(type, text) };
 
 const handleExactIdentifier = async (
   context: WorkflowContext,
@@ -89,7 +92,7 @@ const handleExactIdentifier = async (
     });
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\nCustomer Not Found\n\nCreate ${escapeHtml(identifierDisplayValue(type, identifierInputValue(identifier)))} with zero points and continue?`,
+      createCustomerForOperationConfirmationMessage(identifier),
       { replyMarkup: createForOperationKeyboard(saved.payload.token) }
     );
     return;
@@ -145,7 +148,7 @@ const handleAddCustomerIdentifier = async (
   });
   await context.telegram.sendMessage(
     chatId,
-    `${BRAND}\n\n<b>Confirm New Customer</b>\n\n${escapeHtml(identifierTypeLabel(type))}: ${escapeHtml(identifierDisplayValue(type, identifierInputValue(identifier)))}\nStarting Points: 0.00 points\nStarting Reward Value: ≈ BDT 0`,
+    addCustomerConfirmationMessage(identifier),
     { replyMarkup: addCustomerConfirmKeyboard(saved.payload.token) }
   );
 };
@@ -181,7 +184,7 @@ const handleManagedIdentifier = async (
     });
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\n⚠️ That ${escapeHtml(identifierTypeLabel(type).toLowerCase())} already belongs to Customer #${owner.id}.\n\nNo records were merged or changed.`,
+      `${BRAND}\n\n⚠️ That ${escapeHtml(identifierTypeLabel(type).toLowerCase())} already belongs to Customer #${owner.id}.\n\nNo records were merged or changed.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
       { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
     );
     return;
@@ -196,7 +199,7 @@ const handleManagedIdentifier = async (
     });
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\nℹ️ This customer already uses ${escapeHtml(identifierDisplayValue(type, requested))}.`,
+      `${BRAND}\n\nℹ️ This customer already uses ${escapeHtml(identifierDisplayValue(type, requested))}.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
       { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
     );
     return;

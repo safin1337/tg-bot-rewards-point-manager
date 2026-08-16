@@ -37,6 +37,7 @@ import {
   leaderboardResetConfirmationMessage,
   leaderboardResetSuccessMessage,
   identityChangeSuccessMessage,
+  identifierInputPromptText,
   identityRemoveConfirmationMessage,
   manageCustomerMessage,
   manualAddSuccessMessage,
@@ -49,6 +50,7 @@ import {
 import type { ConversationState, LeaderboardPeriodType } from "../types/models";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
 import type { InlineKeyboardMarkup } from "../telegram/types";
+import { escapeHtml } from "../utils/html";
 import {
   operationFromCode,
   pointConfirmation,
@@ -119,14 +121,11 @@ const identifierFromStoredValue = (
   value: string
 ): CustomerIdentifierInput => type === "WHATSAPP_PHONE"
   ? { type, phone: normalizePhone(value) }
-  : { type, username: normalizeUsername(value) };
+  : { type, username: normalizeUsername(type, value) };
 
 const identifierInputPrompt = (type: CustomerIdentifierType, addingCustomer: boolean): string => {
   const action = addingCustomer ? "Add New Customer" : `Add or Change ${identifierTypeLabel(type)}`;
-  const instruction = type === "WHATSAPP_PHONE"
-    ? "Enter the customer's WhatsApp number.\nSpaces and supported dash characters are accepted."
-    : `Enter the customer's ${identifierTypeLabel(type).toLowerCase()}.\nA leading @ is optional. Use only A-Z, a-z, 0-9, and underscore (maximum 64 characters).`;
-  return `${BRAND}\n\n➕ <b>${action}</b>\n\n${instruction}`;
+  return `${BRAND}\n\n➕ <b>${action}</b>\n\n${identifierInputPromptText(type)}`;
 };
 
 const identityFailureMessage = (error: DomainError): string => {
@@ -852,7 +851,7 @@ export const handleCallback = async (
     await display(
       context,
       target,
-      `${identifierInputPrompt(type, false)}\n\nCurrent Value: ${current === null ? "Not provided" : identifierDisplayValue(type, current)}`,
+      `${identifierInputPrompt(type, false)}\n\nCurrent Value: ${current === null ? "None" : escapeHtml(identifierDisplayValue(type, current))}`,
       backCancelKeyboard(saved.payload.token, "i", "⬅️ Back to Identity Management")
     );
     return;
@@ -888,7 +887,7 @@ export const handleCallback = async (
       await display(
         context,
         target,
-        `${BRAND}\n\n⚠️ A customer's final identifier cannot be removed. Add another identifier first.`,
+        `${BRAND}\n\n⚠️ A customer's final identifier cannot be removed. Add another identifier first.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
         manageCustomerKeyboard(customer, state.payload.token)
       );
       return;

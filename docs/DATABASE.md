@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.6 database design
+# Telegram Loyalty Rewards Point Manager V2.0.7 database design
 
 ## Sources of truth
 
@@ -13,7 +13,9 @@ The nullable `whatsapp_number`, `whatsapp_username`, and `telegram_username`
 columns are current lookup aliases, not primary keys. At least one alias is
 required. Each alias is unique within its own platform; username columns use
 case-insensitive uniqueness while preserving the entered capitalization stored
-in the row. Phone suffix columns are both null when the phone is null and must
+in the row. WhatsApp usernames may contain single periods between alphanumeric
+or underscore groups; Telegram usernames cannot contain periods. Phone suffix
+columns are both null when the phone is null and must
 match the final digits whenever a phone exists.
 
 Identity changes are direct conditional updates against `customers.id` and the
@@ -45,6 +47,16 @@ dropping the old customer table. Explicit column copies, customer copy guards,
 and `pragma_foreign_key_check` make an inconsistency abort the migration.
 Existing balances, detailed transactions, mutation receipts, reward snapshots,
 and leaderboard aggregates remain exactly as stored.
+
+V2.0.7 migration `0008_allow_whatsapp_username_period.sql` rebuilds the same
+customer-dependent table graph so only the WhatsApp username check is loosened.
+It copies every customer column, including IDs, capitalization, balances,
+update-ID high-water marks, and timestamps, then rebuilds transactions,
+mutation receipts, leaderboard aggregates, and conversation states with their
+existing columns and foreign keys. Bidirectional copy guards and a final
+`pragma_foreign_key_check` abort on inconsistency. Telegram username checks,
+case-insensitive per-platform uniqueness, phone constraints, and the
+at-least-one-identifier requirement remain unchanged.
 
 Purchase amounts remain positive whole-number BDT values in the existing
 `purchase_amount_bdt` integer column; decimals are rejected before mutation.
@@ -180,7 +192,7 @@ Run `PRAGMA foreign_key_check;` after migration and restoration. Any returned
 row is a release blocker. Retention row counts above their policy boundaries
 are also release blockers.
 
-For an existing database, take and protect a full remote D1 export before
-applying migration `0007`, then follow the verification queries in
-[V2.0.6-RELEASE.md](V2.0.6-RELEASE.md). Never deploy the V2.0.6 Worker before
+For an existing V2.0.6 database, take and protect a full remote D1 export before
+applying migration `0008`, then follow the verification queries in
+[V2.0.7-RELEASE.md](V2.0.7-RELEASE.md). Never deploy the V2.0.7 Worker before
 the matching migration succeeds.

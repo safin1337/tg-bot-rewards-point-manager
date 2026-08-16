@@ -109,10 +109,15 @@ export const APP_CONFIG = {
         pointFloorProtection: true,
 
         brackets: [
+          // Whole-order purchase range: BDT 1-2,000.
           { maxPurchaseBdt: 2_000, spendBdt: 50, earnPoints: 1 },
+          // Whole-order purchase range: BDT 2,001-4,000.
           { maxPurchaseBdt: 4_000, spendBdt: 60, earnPoints: 1 },
+          // Whole-order purchase range: BDT 4,001-6,000.
           { maxPurchaseBdt: 6_000, spendBdt: 70, earnPoints: 1 },
+          // Whole-order purchase range: BDT 6,001-25,000.
           { maxPurchaseBdt: 25_000, spendBdt: 80, earnPoints: 1 },
+          // Whole-order purchase range: BDT 25,001 and above (unbounded).
           { maxPurchaseBdt: null, spendBdt: 100, earnPoints: 1 }
         ]
       }

@@ -25,6 +25,13 @@ Telegram HTML is not accepted as configuration markup. Branding is escaped at
 the insertion boundary, so a name such as `Example & Sons <Store>` is displayed
 as text instead of being interpreted as HTML.
 
+Purchase, manual-add, redemption, and balance messages are intended to be
+copied into WhatsApp. Their escaped generated heading is wrapped in literal `*`
+markers, producing `*🏆 SoulShop Rewards Point System*` with the default
+configuration. WhatsApp renders the pasted line in bold. Other Telegram screens
+continue to use the native HTML-bold heading. Do not add `*` markers to
+`APP_CONFIG`, or they will be duplicated.
+
 ## Closing taglines and `{brand}`
 
 `brand.taglines` is an ordered array. Edit, add, remove, or reorder its entries
@@ -42,7 +49,10 @@ Every `{brand}` occurrence is replaced with the configured brand name. With
 `name: "Example Store"`, the last example becomes `Best Wishes from Example
 Store`. All generated tagline text is escaped before Telegram HTML insertion.
 History intentionally omits the closing taglines; purchase, manual-add,
-redemption, and balance messages include them.
+redemption, and balance messages include them. The Worker adds a visible `> `
+prefix at the Telegram insertion boundary; when the resulting message is copied
+and pasted into WhatsApp, every configured tagline is presented as a blockquote.
+Do not add the prefix to `APP_CONFIG`, or the displayed marker will be duplicated.
 
 ## Purchase earning policy
 

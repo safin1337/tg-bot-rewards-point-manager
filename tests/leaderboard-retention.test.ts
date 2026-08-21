@@ -12,9 +12,10 @@ import {
   leaderboardPeriods
 } from "../src/domain/leaderboard";
 import { normalizePhone } from "../src/domain/phone";
+import { normalizeUsername } from "../src/domain/customer-identity";
 import { roundRewardBdt } from "../src/domain/rewards";
 import { leaderboardMessage } from "../src/telegram/messages";
-import type { Customer, TransactionType } from "../src/types/models";
+import type { Customer, LeaderboardEntry, TransactionType } from "../src/types/models";
 
 const ADMIN_ID = "123456789";
 const CURRENT_AT = new Date("2026-08-05T09:00:00.000Z");
@@ -356,22 +357,164 @@ describe("Dhaka leaderboard periods, ranking, and display", () => {
     );
   });
 
-  it("formats only phones and deterministic two-decimal points without changing precision", () => {
-    const period = leaderboardPeriods("MONTH", CURRENT_AT)[0];
-    if (period === undefined) throw new Error("Missing current month.");
-    const text = leaderboardMessage(period, [{
-      customerId: 1,
-      whatsappNumber: "+8801712345678",
-      whatsappUsername: null,
-      telegramUsername: null,
-      earnedPointUnits: 12_345,
-      firstQualifyingEarningAtUtc: CURRENT_ISO
-    }]);
+  it.each([
+    ["WEEK", "Weekly", "03 Aug 2026 — 09 Aug 2026"],
+    ["MONTH", "Monthly", "August 2026"]
+  ] as const)("formats every identity combination on the %s leaderboard", (type, title, label) => {
+    const entries: LeaderboardEntry[] = [
+      {
+        customerId: 1,
+        whatsappNumber: "+8801712345678",
+        whatsappUsername: null,
+        telegramUsername: null,
+        earnedPointUnits: 70_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 2,
+        whatsappNumber: null,
+        whatsappUsername: "Soul.Shop",
+        telegramUsername: null,
+        earnedPointUnits: 60_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 3,
+        whatsappNumber: null,
+        whatsappUsername: null,
+        telegramUsername: "SoulShop_User",
+        earnedPointUnits: 50_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 4,
+        whatsappNumber: "+8801712345679",
+        whatsappUsername: "Phone.WA",
+        telegramUsername: null,
+        earnedPointUnits: 40_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 5,
+        whatsappNumber: "+8801712345680",
+        whatsappUsername: null,
+        telegramUsername: "Phone_TG",
+        earnedPointUnits: 30_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 6,
+        whatsappNumber: null,
+        whatsappUsername: "WA.Primary",
+        telegramUsername: "TG_Secondary",
+        earnedPointUnits: 20_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      },
+      {
+        customerId: 7,
+        whatsappNumber: "+8801712345681",
+        whatsappUsername: "All.WA",
+        telegramUsername: "All_TG",
+        earnedPointUnits: 10_000,
+        firstQualifyingEarningAtUtc: CURRENT_ISO
+      }
+    ];
+    const text = leaderboardMessage({ type, key: type === "WEEK" ? "2026-08-03" : "2026-08", label, running: true }, entries);
     expect(formatLeaderboardPointUnits(12_345)).toBe("1.23");
     expect(formatLeaderboardPointUnits(12_350)).toBe("1.24");
-    expect(text).toContain("1st +8801712345678 — 1.23 points");
-    expect(text).not.toContain("Customer:");
+    expect(text).toBe(
+      `🏆 <b>SoulShop ${title} Leaderboard</b>\n${label} — Running\n\n`
+      + "1st · +8801712345678 — 7.00 pts\n"
+      + "2nd · WA @Soul.Shop — 6.00 pts\n"
+      + "3rd · TG @SoulShop_User — 5.00 pts\n"
+      + "4th · +8801712345679 — 4.00 pts (+1 alias)\n"
+      + "5th · +8801712345680 — 3.00 pts (+1 alias)\n"
+      + "6th · WA @WA.Primary — 2.00 pts (+1 alias)\n"
+      + "7th · +8801712345681 — 1.00 pts (+2 aliases)"
+    );
     expect(12_345).toBe(12_345);
+  });
+
+  it("returns phone, WhatsApp username, and Telegram username fields from D1 rankings", async () => {
+    const repository = customers();
+    const allIdentifiers = await createCustomer(13, 13);
+    const withWhatsapp = await repository.changeIdentifier(
+      allIdentifiers.id,
+      "WHATSAPP_USERNAME",
+      null,
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "All.WA") },
+      CURRENT_ISO
+    );
+    const withAll = await repository.changeIdentifier(
+      allIdentifiers.id,
+      "TELEGRAM_USERNAME",
+      null,
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "All_TG") },
+      CURRENT_ISO
+    );
+    expect(withWhatsapp.changed).toBe(true);
+    expect(withAll.changed).toBe(true);
+
+    const whatsappOnly = (await repository.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "Only.WA") },
+      14,
+      CURRENT_ISO
+    )).customer;
+    const telegramOnly = (await repository.createZeroBalance(
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "Only_TG") },
+      15,
+      CURRENT_ISO
+    )).customer;
+
+    const service = new RewardMutationService(env.DB, () => CURRENT_AT);
+    await mutate(service, withAll.customer, 13_000, 0, 30_000);
+    await mutate(service, whatsappOnly, 14_000, 0, 20_000);
+    await mutate(service, telegramOnly, 15_000, 0, 10_000);
+
+    const periods = [
+      leaderboardPeriods("WEEK", CURRENT_AT)[0],
+      leaderboardPeriods("MONTH", CURRENT_AT)[0]
+    ];
+    for (const period of periods) {
+      if (period === undefined) throw new Error("Missing current leaderboard period.");
+      const entries = await leaderboards().list(period);
+      expect(entries).toEqual([
+        expect.objectContaining({
+          customerId: withAll.customer.id,
+          whatsappNumber: withAll.customer.whatsappNumber,
+          whatsappUsername: "All.WA",
+          telegramUsername: "All_TG"
+        }),
+        expect.objectContaining({
+          customerId: whatsappOnly.id,
+          whatsappNumber: null,
+          whatsappUsername: "Only.WA",
+          telegramUsername: null
+        }),
+        expect.objectContaining({
+          customerId: telegramOnly.id,
+          whatsappNumber: null,
+          whatsappUsername: null,
+          telegramUsername: "Only_TG"
+        })
+      ]);
+    }
+  });
+
+  it("rejects a leaderboard entry without any customer identity", () => {
+    expect(() => leaderboardMessage({
+      type: "MONTH",
+      key: "2026-08",
+      label: "August 2026",
+      running: true
+    }, [{
+      customerId: 99,
+      whatsappNumber: null,
+      whatsappUsername: null,
+      telegramUsername: null,
+      earnedPointUnits: 10_000,
+      firstQualifyingEarningAtUtc: CURRENT_ISO
+    }])).toThrow(/no identifier/i);
   });
 
   it("serves current, previous, and two-weeks-ago windows while excluding obsolete periods", async () => {

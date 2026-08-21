@@ -14,12 +14,14 @@ import {
 } from "../domain/customer-identity";
 import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
 import type { Customer, LeaderboardEntry, LeaderboardPeriodType, Operation, RewardTransaction } from "../types/models";
+import { formatPurchaseAmountBdt } from "../utils/bdt";
 import { escapeHtml } from "../utils/html";
 import { formatDhakaDateTime } from "../utils/time";
 
 export interface TelegramBranding {
   brandNameHtml: string;
   headingHtml: string;
+  whatsappShareHeadingHtml: string;
   taglinesHtml: string;
 }
 
@@ -28,7 +30,8 @@ export const telegramBrandingFromConfig = (config: AppConfiguration): TelegramBr
   return {
     brandNameHtml: escapeHtml(runtime.brand.name),
     headingHtml: `🏆 <b>${escapeHtml(runtime.brand.fullHeading)}</b>`,
-    taglinesHtml: runtime.brand.taglines.map(escapeHtml).join("\n")
+    whatsappShareHeadingHtml: `*🏆 ${escapeHtml(runtime.brand.fullHeading)}*`,
+    taglinesHtml: runtime.brand.taglines.map((tagline) => `&gt; ${escapeHtml(tagline)}`).join("\n")
   };
 };
 
@@ -36,6 +39,7 @@ const TELEGRAM_BRANDING = telegramBrandingFromConfig(APP_CONFIG);
 
 export const BRAND_NAME_HTML = TELEGRAM_BRANDING.brandNameHtml;
 export const BRAND = TELEGRAM_BRANDING.headingHtml;
+export const WHATSAPP_SHARE_BRAND = TELEGRAM_BRANDING.whatsappShareHeadingHtml;
 export const TAGLINES = TELEGRAM_BRANDING.taglinesHtml;
 
 export const dashboardMessage = (): string =>
@@ -80,6 +84,9 @@ export const customerInfoBlock = (customer: CustomerInfo): string => {
   if (lines.length === 0) throw new Error("Customer has no identifier.");
   return ["Customer Info:", ...lines].join("\n");
 };
+
+const whatsappMonospaceLines = (lines: readonly string[]): string =>
+  lines.map((line) => `\`${line}\``).join("\n");
 
 const customerInfoFromIdentifier = (identifier: CustomerIdentifierInput): string => {
   switch (identifier.type) {
@@ -159,7 +166,7 @@ export const earningEntryPromptMessage = (
       if (latestTransaction.purchaseAmountBdt === null) {
         throw new Error("Latest purchase amount is missing.");
       }
-      latestDetails = `${date}\nPURCHASE: ${points}\nPurchase Amount: BDT ${latestTransaction.purchaseAmountBdt}`;
+      latestDetails = `${date}\nPURCHASE: ${points}\nPurchase Amount: BDT ${formatPurchaseAmountBdt(latestTransaction.purchaseAmountBdt)}`;
     } else {
       latestDetails = `${date}\nMANUAL_ADD: ${points}${latestTransaction.note === null
         ? ""
@@ -273,7 +280,20 @@ export const leaderboardMessage = (
     : entries.map((entry, index) => {
       const rank = index + 1;
       const ordinal = rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `${rank}th`;
-      return `${ordinal} ${escapeHtml(customerPrimaryLabel(entry))} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} points`;
+      const identityCount = [
+        entry.whatsappNumber,
+        entry.whatsappUsername,
+        entry.telegramUsername
+      ].filter((value) => value !== null).length;
+      const identity = entry.whatsappNumber
+        ?? (entry.whatsappUsername === null ? null : `WA @${entry.whatsappUsername}`)
+        ?? (entry.telegramUsername === null ? null : `TG @${entry.telegramUsername}`);
+      if (identity === null || identityCount === 0) throw new Error("Customer has no identifier.");
+      const additionalAliases = identityCount - 1;
+      const aliasLabel = additionalAliases === 0
+        ? ""
+        : ` (+${additionalAliases} ${additionalAliases === 1 ? "alias" : "aliases"})`;
+      return `${ordinal} · ${escapeHtml(identity)} — ${formatLeaderboardPointUnits(entry.earnedPointUnits)} pts${aliasLabel}`;
     });
   return `🏆 <b>${BRAND_NAME_HTML} ${title} Leaderboard</b>
 ${escapeHtml(period.label)} — ${period.running ? "Running" : "Completed"}
@@ -304,7 +324,7 @@ ${duplicate ? "ℹ️ This reset was already processed." : `✅ Current ${type =
 Period: ${escapeHtml(periodLabel)}
 Customer balances and transaction history were not changed.`;
 
-export const balanceMessage = (customer: Customer): string => `${BRAND}
+export const balanceMessage = (customer: Customer): string => `${WHATSAPP_SHARE_BRAND}
 
 🔍 <b>Reward Point Balance</b>
 
@@ -312,27 +332,28 @@ ${customerInfoBlock(customer)}
 
 🎉 Congratulations!
 
-Your current reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Current reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 Estimated reward value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
 
-export const purchaseSuccessMessage = (customer: Customer, amount: number, earned: number): string => `${BRAND}
+export const purchaseSuccessMessage = (customer: Customer, amount: number, earned: number): string => `${WHATSAPP_SHARE_BRAND}
 
-✅ <b>Purchase Successfully Recorded</b>
+✅ Purchase Successfully Recorded
+${whatsappMonospaceLines([
+    ...customerInfoBlock(customer).split("\n"),
+    `Purchase Amount: BDT ${formatPurchaseAmountBdt(amount)}`,
+    `Points Earned: ${formatPointUnitsForDisplay(earned)} points`
+  ])}
 
-${customerInfoBlock(customer)}
-Purchase Amount: BDT ${amount}
-Points Earned: ${formatPointUnitsForDisplay(earned)} points
+*🎉 Congratulations!*
 
-🎉 Congratulations!
-
-Your updated reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
-Estimated reward value: BDT ${customer.roundedRewardBdt}
+Updated reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated reward value: *BDT ${customer.roundedRewardBdt}*
 
 ${TAGLINES}`;
 
-export const manualAddSuccessMessage = (customer: Customer, units: number, note: string | null): string => `${BRAND}
+export const manualAddSuccessMessage = (customer: Customer, units: number, note: string | null): string => `${WHATSAPP_SHARE_BRAND}
 
 ✅ <b>Reward Points Successfully Added</b>
 
@@ -341,7 +362,7 @@ Points Added: ${formatPointUnitsForDisplay(units)} points${note === null ? "" : 
 
 🎉 Congratulations!
 
-Your updated reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Current reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 Estimated reward value: BDT ${customer.roundedRewardBdt}
 
 ${TAGLINES}`;
@@ -350,7 +371,7 @@ export const redemptionSuccessMessage = (
   customer: Customer,
   redeemedUnits: number,
   redeemedRewardBdt: number
-): string => `${BRAND}
+): string => `${WHATSAPP_SHARE_BRAND}
 
 ✅ <b>Reward Points Successfully Redeemed</b>
 
@@ -402,7 +423,9 @@ export const historyMessage = (
       const details = [
         `<b>${escapeHtml(formatDhakaDateTime(transaction.createdAtUtc))}</b>`,
         transactionLabel(transaction),
-        ...(transaction.purchaseAmountBdt === null ? [] : [`Purchase Amount: BDT ${transaction.purchaseAmountBdt}`]),
+        ...(transaction.purchaseAmountBdt === null
+          ? []
+          : [`Purchase Amount: BDT ${formatPurchaseAmountBdt(transaction.purchaseAmountBdt)}`]),
         `Balance Before: ${formatPointUnitsForDisplay(transaction.balanceBeforeUnits)} points`,
         `Balance After: ${formatPointUnitsForDisplay(transaction.balanceAfterUnits)} points`,
         `Reward Value After: ≈ BDT ${transaction.roundedRewardAfterBdt}`,

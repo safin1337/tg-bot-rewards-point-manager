@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createCsv, csvCell, safeCsvText } from "../src/utils/csv";
 import { escapeHtml } from "../src/utils/html";
 import { dhakaDate, formatDhakaDateTime } from "../src/utils/time";
+import { formatPurchaseAmountBdt } from "../src/utils/bdt";
 import { normalizeUsername } from "../src/domain/customer-identity";
 import {
   addCustomerSuccessMessage,
@@ -165,6 +166,27 @@ describe("time formatting", () => {
   });
 });
 
+describe("Bangladeshi purchase-amount presentation", () => {
+  it.each([
+    [1, "1.00"],
+    [999, "999.00"],
+    [1_000, "1,000.00"],
+    [10_201, "10,201.00"],
+    [99_999, "99,999.00"],
+    [100_000, "1,00,000.00"],
+    [110_201, "1,10,201.00"],
+    [9_999_999, "99,99,999.00"],
+    [10_000_000, "1,00,00,000.00"]
+  ])("formats BDT %d as %s", (amount, expected) => {
+    expect(formatPurchaseAmountBdt(amount)).toBe(expected);
+  });
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects invalid display input %s",
+    (amount) => expect(() => formatPurchaseAmountBdt(amount)).toThrow(/positive safe integer/i)
+  );
+});
+
 describe("required branded messages", () => {
   it.each([
     ["PURCHASE", "🛍️ <b>Record Purchase</b>"],
@@ -243,10 +265,10 @@ describe("required branded messages", () => {
       + "WhatsApp Number: +8801712345678\n"
       + "WhatsApp Username: @Example_Name\n"
       + "Telegram Username: @Telegram_Name";
+    const purchaseMessage = purchaseSuccessMessage(customerWithAllIdentifiers, 500, 100_000);
     const messages = [
       balanceMessage(customerWithAllIdentifiers),
       purchaseConfirmation(customerWithAllIdentifiers, 500, 100_000),
-      purchaseSuccessMessage(customerWithAllIdentifiers, 500, 100_000),
       pointConfirmation(customerWithAllIdentifiers, "MANUAL_ADD", 10_000, null),
       manualAddSuccessMessage(customerWithAllIdentifiers, 10_000, null),
       pointConfirmation(customerWithAllIdentifiers, "REDEEM", 10_000, null),
@@ -263,6 +285,13 @@ describe("required branded messages", () => {
       expect(message).toContain(expected);
       expect(message).not.toContain("Not provided");
     }
+    expect(purchaseMessage).toContain(
+      "`Customer Info:`\n"
+      + "`WhatsApp Number: +8801712345678`\n"
+      + "`WhatsApp Username: @Example_Name`\n"
+      + "`Telegram Username: @Telegram_Name`"
+    );
+    expect(purchaseMessage).not.toContain("Not provided");
   });
 
   it("uses Customer Info for both new-customer confirmation paths", () => {
@@ -282,7 +311,7 @@ describe("required branded messages", () => {
       + "Latest Transaction:\n"
       + "<b>10 Aug 2026, 06:27 PM</b>\n"
       + "PURCHASE: +11.00 points\n"
-      + "Purchase Amount: BDT 550\n\n"
+      + "Purchase Amount: BDT 550.00\n\n"
       + "Enter the purchase amount in BDT."
     );
   });
@@ -322,26 +351,50 @@ describe("required branded messages", () => {
     })).toThrow(/cannot be a redemption/i);
   });
 
-  it("purchase includes headline, Congratulations, updated balance labels, and all taglines", () => {
-    const message = purchaseSuccessMessage(customerWithLargeBalance, 525, 65_625);
-    expect(message).toContain("Purchase Successfully Recorded");
-    expect(message).toContain("Congratulations");
-    expect(message).toContain("Points Earned: 6.56 points");
-    expect(message).toContain(
-      "Your updated reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+  it("renders the exact WhatsApp-formatted purchase receipt", () => {
+    const message = purchaseSuccessMessage(customerWithLargeBalance, 110_201, 65_625);
+    expect(message).toBe(
+      "*🏆 SoulShop Rewards Point System*\n\n"
+      + "✅ Purchase Successfully Recorded\n"
+      + "`Customer Info:`\n"
+      + "`WhatsApp Number: +8801712345678`\n"
+      + "`Purchase Amount: BDT 1,10,201.00`\n"
+      + "`Points Earned: 6.56 points`\n\n"
+      + "*🎉 Congratulations!*\n\n"
+      + "Updated reward balance: 1,356.70 points\n"
+      + "Estimated reward value: *BDT 339*\n\n"
+      + "&gt; Buy More to Earn More\n"
+      + "&gt; Thank you for purchasing from us\n"
+      + "&gt; Best Wishes from SoulShop"
     );
-    expect(message).toContain("Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop");
   });
 
   it("manual addition omits an absent Reason line and escapes a present note", () => {
     const message = manualAddSuccessMessage(customerWithLargeBalance, 10_000, null);
     expect(message).toContain("Points Added: 1.00 points");
     expect(message).toContain(
-      "Your updated reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+      "Current reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
     );
     expect(message).not.toContain("Reason:");
     expect(manualAddSuccessMessage(customerWithLargeBalance, 10_000, "<reason>"))
       .toContain("Reason: &lt;reason&gt;");
+  });
+
+  it("renders a WhatsApp-ready bold heading and quoted taglines on every shareable message", () => {
+    const expectedClosing = "&gt; Buy More to Earn More\n"
+      + "&gt; Thank you for purchasing from us\n"
+      + "&gt; Best Wishes from SoulShop";
+    const messages = [
+      purchaseSuccessMessage(customerWithLargeBalance, 525, 10_000),
+      manualAddSuccessMessage(customerWithLargeBalance, 10_000, null),
+      redemptionSuccessMessage(customerWithLargeBalance, 10_000, 0),
+      balanceMessage(customerWithLargeBalance)
+    ];
+    for (const message of messages) {
+      expect(message.startsWith("*🏆 SoulShop Rewards Point System*\n")).toBe(true);
+      expect(message.endsWith(expectedClosing)).toBe(true);
+      expect(message).not.toContain("🏆 <b>SoulShop Rewards Point System</b>");
+    }
   });
 
   it("redemption uses the exact redeemed and remaining labels and never congratulates", () => {
@@ -351,13 +404,19 @@ describe("required branded messages", () => {
       "Reward amount redeemed: 25.00 points\nEquivalent reward value: BDT 6\n\n"
       + "Your remaining reward balance: 1,356.70 points\nEstimated remaining value: BDT 339"
     );
-    expect(message).toContain("Best Wishes from SoulShop");
+    expect(message).toContain("&gt; Best Wishes from SoulShop");
   });
 
   it("balance uses the exact current balance labels", () => {
     expect(balanceMessage(customerWithLargeBalance)).toContain(
-      "Your current reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
+      "Current reward balance: 1,356.70 points\nEstimated reward value: BDT 339"
     );
+  });
+
+  it("uses Bangladeshi grouping in purchase confirmation without changing calculations", () => {
+    const message = purchaseConfirmation(customer, 10_201, 127_513);
+    expect(message).toContain("Purchase Amount: BDT 10,201.00");
+    expect(message).toContain("Points Earned: 12.75 points");
   });
 
   it("zero-point customer success contains no reward transaction claim", () => {
@@ -373,7 +432,7 @@ describe("required branded messages", () => {
     expect(message).toContain("PURCHASE: +6.56 points");
     expect(message).toContain("Balance Before: 0.00 points");
     expect(message).toContain("Balance After: 6.56 points");
-    expect(message).toContain("Purchase Amount: BDT 525");
+    expect(message).toContain("Purchase Amount: BDT 525.00");
     expect(message).toContain("Note: &lt;private &amp; note&gt;");
     expect(message).not.toContain("Buy More to Earn More");
     expect(message).not.toContain("Thank you for purchasing from us");

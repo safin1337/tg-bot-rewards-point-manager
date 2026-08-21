@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.7 database design
+# Telegram Loyalty Rewards Point Manager V2.0.8 database design
 
 ## Sources of truth
 
@@ -60,7 +60,10 @@ at-least-one-identifier requirement remain unchanged.
 
 Purchase amounts remain positive whole-number BDT values in the existing
 `purchase_amount_bdt` integer column; decimals are rejected before mutation.
-No poisha column, schema migration, or historical recalculation is needed.
+V2.0.8 formats those integers with two presentation decimals and Bangladeshi
+lakh/crore grouping only when building Telegram messages. No poisha column,
+schema migration, stored-value rewrite, CSV rewrite, or historical
+recalculation is needed.
 
 Two-decimal point formatting is a Telegram presentation rule only. It is
 calculated from integer point units with half-up rounding and is never stored

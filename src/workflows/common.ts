@@ -23,6 +23,7 @@ import {
   selectionMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
+import { formatPurchaseAmountBdt } from "../utils/bdt";
 import type { WorkflowContext } from "./context";
 import { editOrSendFallback, type ActiveMessageTarget } from "../telegram/active-message";
 import type { InlineKeyboardMarkup } from "../telegram/types";
@@ -270,7 +271,7 @@ export const purchaseConfirmation = (
 <b>Confirm Purchase</b>
 
 ${customerInfoBlock(customer)}
-Purchase Amount: BDT ${amount}
+Purchase Amount: BDT ${formatPurchaseAmountBdt(amount)}
 Points Earned: ${formatPointUnitsForDisplay(units)} points
 Previous Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
 New Points: ${formatPointUnitsForDisplay(after)} points

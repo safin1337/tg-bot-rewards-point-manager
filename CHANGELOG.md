@@ -2,6 +2,49 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.8] - 2026-08-22
+
+### Compact identity-aware leaderboards
+
+- Kept every weekly and monthly ranking entry on one logical line while
+  shortening username labels to `WA @Username` and `TG @Username`.
+- Preserved the primary-identifier priority of WhatsApp number, WhatsApp
+  username, then Telegram username. When a ranked customer has additional
+  identifiers, the points now carry an exact `(+1 alias)` or `(+2 aliases)`
+  indicator without exposing every alias or changing ranking order.
+- Added direct D1, formatter, and Telegram callback regression coverage for
+  phone-only, WhatsApp-only, Telegram-only, every two-identifier combination,
+  all three identifiers, and both weekly and monthly views.
+
+### Share-ready customer presentation
+
+- Rendered every configured closing tagline with a visible `> ` prefix so
+  purchase, manual-add, redemption, and balance results become WhatsApp
+  blockquotes when copied and pasted. Tagline configuration, `{brand}`
+  substitution, ordering, and Telegram HTML escaping remain centralized.
+- Wrapped the escaped configured heading in literal `*` markers on those same
+  customer-shareable messages so the title becomes bold when pasted into
+  WhatsApp, while ordinary Telegram screens retain their HTML-bold heading.
+- Gave purchase receipts a complete WhatsApp-ready presentation contract:
+  monospace customer and transaction details, bold Congratulations and reward
+  value markers, and the concise `Updated reward balance` label. Manual-add and
+  balance results retain the `Current reward balance` label.
+- Formatted every Telegram `Purchase Amount: BDT ...` field with exactly two
+  decimals and Bangladeshi lakh/crore grouping, such as `10,201.00`,
+  `1,10,201.00`, and `1,00,00,000.00`.
+- Kept purchase input, D1 integer storage, reward calculations, estimated
+  reward values, point formatting, and CSV values unchanged.
+
+### Release compatibility
+
+- Added no D1 migration, schema change, data backfill, webhook change, command
+  registration change, or secret change. V2.0.8 runs on the V2.0.7 schema with
+  migrations through `0008_allow_whatsapp_username_period.sql` applied.
+- Updated installation, workflow, customization, database, release, and
+  permanent-agent documentation for the new exact presentation contracts.
+- No production deployment, remote D1 operation, commit, push, or tag was
+  performed by this work.
+
 ## [2.0.7] - 2026-08-16
 
 ### Bug Fix

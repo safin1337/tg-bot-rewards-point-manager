@@ -167,10 +167,23 @@ leaderboard week or month spanning deployment can therefore contain purchases
 calculated under both earning policies. Confirmations prepared under an older
 policy are rejected without mutation and must be restarted.
 
-Purchase and manual-add results label the post-transaction total as the
-`updated reward balance`; balance checks use `current reward balance`.
+Purchase results use `Updated reward balance` and bold the complete `BDT {value}`
+portion of `Estimated reward value` when pasted into WhatsApp. Manual-add and
+balance results use `Current reward balance` followed by `Estimated reward
+value`.
 Redemption results separately label the redeemed amount/value and the remaining
 balance/value. These customer-facing labels do not change reward calculations.
+Purchase amounts use Bangladeshi lakh/crore grouping with exactly two display
+decimals, for example `BDT 10,201.00`, `BDT 1,10,201.00`, and
+`BDT 1,00,00,000.00`; purchase input and stored whole-number BDT remain
+unchanged. Purchase, manual-add, redemption, and balance messages start with the
+configured heading wrapped in literal `*` markers and render each closing
+tagline with a visible `> ` prefix, so copied text uses WhatsApp bold and
+blockquote formatting. Other Telegram screens retain their native HTML-bold
+heading.
+Purchase success additionally wraps `Customer Info:` and every customer and
+transaction detail line in literal backticks for WhatsApp monospace formatting,
+and wraps `🎉 Congratulations!` in literal `*` markers.
 Full customer-specific messages use a conditional `Customer Info:` block in
 WhatsApp number, WhatsApp username, then Telegram username order. Missing lines
 are omitted; compact lists, leaderboards, selection screens, and amount-entry
@@ -185,6 +198,9 @@ prompts continue to use one primary identifier.
 - Rankings use exact `earned_point_units DESC`, then the earliest qualifying earning timestamp, then `customer_id ASC`.
 - Results show the customer's available primary identifier (phone first, then
   WhatsApp username, then Telegram username) and are limited to 10 entries.
+  Username labels use `WA @Username` or `TG @Username`. A customer with other
+  stored identifiers receives `(+1 alias)` or `(+2 aliases)` beside the points;
+  the additional values themselves are not exposed in the ranking.
 - Display uses deterministic two-decimal rounding, while storage remains exact integer point units with four-decimal point precision.
 - Weekly and monthly resets are independent. A reset starts a new generation/cutoff for only the current period; balances and detailed history do not change.
 
@@ -268,7 +284,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.7 release guide](docs/V2.0.7-RELEASE.md).
+[V2.0.8 release guide](docs/V2.0.8-RELEASE.md).
 
 ## Security summary
 

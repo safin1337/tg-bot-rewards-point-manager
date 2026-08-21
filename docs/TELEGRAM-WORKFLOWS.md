@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-V2.0.7 uses a hybrid message model to reduce clutter without making
+V2.0.8 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
@@ -113,9 +113,11 @@ the generated heading remains `SoulShop Rewards Point System`.
 - Lines appear only for identifiers that exist, always in the order shown.
   Stored capitalization is preserved, dynamic values are HTML-escaped, and no
   `Not provided` or empty identifier line appears.
-- Search results, leaderboards, short selection panels, and purchase/manual-add
-  amount-entry prompts retain the compact primary identifier order: WhatsApp
-  number, WhatsApp username, then Telegram username.
+- Search results, short selection panels, and purchase/manual-add amount-entry
+  prompts retain the compact primary identifier order: WhatsApp number,
+  WhatsApp username, then Telegram username. Leaderboards use that same priority
+  with `WA`/`TG` username labels and append `(+1 alias)` or `(+2 aliases)` beside
+  the points when other identifiers exist.
 
 ## Latest earning transaction context
 
@@ -123,7 +125,8 @@ the generated heading remains `SoulShop Rewards Point System`.
   panels load the newest retained `PURCHASE` or `MANUAL_ADD`, ordered by
   `created_at_utc DESC, id DESC`. `REDEEM` rows are skipped.
 - The display uses Asia/Dhaka time and two-decimal point formatting. A purchase
-  shows `Purchase Amount: BDT {amount}`. A manual addition shows
+  shows `Purchase Amount: BDT {amount}` with exactly two decimals and
+  Bangladeshi lakh/crore grouping. A manual addition shows
   `Reason: {note}` when a note exists, with the note HTML-escaped.
 - If no eligible retained row exists, the exact text is
   `No Prior Data Found!`.
@@ -180,15 +183,27 @@ the generated heading remains `SoulShop Rewards Point System`.
 
 ## Success and balance labels
 
-- Purchase and manual-add results use `Your updated reward balance` followed by
-  `Estimated reward value`.
-- Balance checks use `Your current reward balance` followed by
+- Purchase results use `Updated reward balance` followed by
+  `Estimated reward value: *BDT {value}*`.
+- Manual-add and balance results use `Current reward balance` followed by
   `Estimated reward value`.
 - Redemption results use `Reward amount redeemed` and `Equivalent reward value`,
   then one blank line before `Your remaining reward balance` and
   `Estimated remaining value`.
-- These are exact message contracts. The existing headings, Congratulations
-  rules, closing lines, and reward calculations remain unchanged.
+- These are exact message contracts. Purchase, manual-add, redemption, and
+  balance messages start with the configured application heading wrapped in
+  literal `*` markers so pasted WhatsApp text renders it in bold. Their
+  configured closing taglines use a visible `> ` prefix for WhatsApp blockquote
+  formatting. Other Telegram screens retain their HTML-bold heading, history
+  continues to omit all taglines, and the Congratulations rules and reward
+  calculations remain unchanged.
+
+The purchase-success receipt uses literal WhatsApp formatting markers as an
+exact presentation contract. Its application heading and `🎉 Congratulations!`
+line use `*` markers. `Customer Info:` and each identifier, purchase amount, and
+points-earned line use their own pair of backticks, with no blank line between
+`✅ Purchase Successfully Recorded` and `Customer Info:`. The complete `BDT
+{value}` portion of the estimated reward line also uses `*` markers.
 
 ## Editing rules
 

@@ -73,10 +73,17 @@ describe("central application configuration", () => {
     expect(branding.headingHtml).toBe(
       "🏆 <b>Example &amp; Sons &lt;Store&gt; Customer Loyalty Program</b>"
     );
-    expect(branding.taglinesHtml).toContain("Welcome to Example &amp; Sons &lt;Store&gt;");
-    expect(branding.taglinesHtml).toContain("&lt;b&gt;Not Telegram markup&lt;/b&gt;");
+    expect(branding.whatsappShareHeadingHtml).toBe(
+      "*🏆 Example &amp; Sons &lt;Store&gt; Customer Loyalty Program*"
+    );
+    expect(branding.taglinesHtml).toBe(
+      "&gt; Welcome to Example &amp; Sons &lt;Store&gt;\n"
+      + "&gt; A separately editable line\n"
+      + "&gt; &lt;b&gt;Not Telegram markup&lt;/b&gt;"
+    );
     expect(branding.taglinesHtml).not.toContain("<Store>");
     expect(branding.taglinesHtml).not.toContain("<b>Not Telegram markup</b>");
+    expect(branding.whatsappShareHeadingHtml).not.toContain("<Store>");
   });
 
   it.each([

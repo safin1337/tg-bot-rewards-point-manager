@@ -44,19 +44,35 @@ These rules are mandatory for every future coding agent working in this reposito
   configuration the main heading remains `SoulShop Rewards Point System`.
 - Purchase, manual-add, redemption, and balance messages must preserve these
   exact three default closing lines, generated from configurable taglines:
-  `Buy More to Earn More`
-  `Thank you for purchasing from us`
-  `Best Wishes from SoulShop`
+  `> Buy More to Earn More`
+  `> Thank you for purchasing from us`
+  `> Best Wishes from SoulShop`
 - Support `{brand}` substitution in every configured tagline, allow taglines to
   be independently edited/reordered, and escape all configured branding and
-  tagline text before Telegram HTML insertion.
+  tagline text before Telegram HTML insertion. Add the visible quote prefix at
+  the insertion boundary; never require it in `APP_CONFIG`.
+- Purchase, manual-add, redemption, and balance messages must start with the
+  escaped configured application heading wrapped in literal WhatsApp bold
+  markers. The default first line is exactly
+  `*🏆 SoulShop Rewards Point System*`. Other Telegram screens retain the
+  native HTML-bold heading without literal asterisks.
 - History messages intentionally omit all three closing lines.
-- Purchase and manual-add success must preserve these exact adjacent lines:
-  `Your updated reward balance: {points} points`
+- Telegram-visible `Purchase Amount: BDT ...` fields use exactly two decimals
+  and Bangladeshi lakh/crore grouping. This must never change positive
+  whole-number input, D1 integer storage, reward arithmetic, or CSV values.
+- Purchase success must preserve these exact adjacent lines:
+  `Updated reward balance: {points} points`
+  `Estimated reward value: *BDT {value}*`
+- Manual-add success and balance messages must preserve these exact adjacent
+  lines:
+  `Current reward balance: {points} points`
   `Estimated reward value: BDT {value}`
-- Balance messages must preserve these exact adjacent lines:
-  `Your current reward balance: {points} points`
-  `Estimated reward value: BDT {value}`
+- Purchase success must use the exact WhatsApp-ready presentation contract:
+  `✅ Purchase Successfully Recorded` is plain text; `Customer Info:` plus each
+  identifier, purchase amount, and points-earned line is independently wrapped
+  in literal backticks; `*🎉 Congratulations!*` is wrapped in literal bold
+  markers; and there is no blank line between the success title and the first
+  backtick-wrapped detail line.
 - Redemption must preserve these two pairs, separated by one blank line:
   `Reward amount redeemed: {points} points`
   `Equivalent reward value: BDT {value}`
@@ -101,6 +117,10 @@ These rules are mandatory for every future coding agent working in this reposito
   informational and must never affect balances, mutations, or retention.
 - Completed mutation receipts are bounded to the receipts corresponding to each customer's retained newest 40 transactions. Preserve the per-customer mutation update-ID high-water mark so a pruned delayed update cannot mutate a balance.
 - Retain leaderboard reset receipts only when they are both within the two-calendar-month UTC window and within the latest 40 overall, ordered by timestamp then Telegram update ID descending.
+- Leaderboard rows remain one logical line and use the exact primary-identifier
+  priority of WhatsApp number, WhatsApp username, then Telegram username.
+  Username labels are `WA @Username` and `TG @Username`; append `(+1 alias)` or
+  `(+2 aliases)` beside `pts` when additional identifiers exist.
 - Preserve genuinely active processed-update leases. Bound eligible non-active processed updates to records both within the two-calendar-month UTC window and within the latest 40 overall.
 - Customers remain unbounded. Leaderboard periods and aggregates retain the current/previous-month and current/two-previous-week policy.
 - Preserve idempotency for customer creation, balance confirmations, and exports. Duplicate Telegram updates must not change balances twice.

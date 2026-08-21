@@ -4,6 +4,7 @@ import { processTelegramUpdate } from "../src/application/bot-controller";
 import { RewardMutationService } from "../src/application/mutation-service";
 import { CustomerRepository } from "../src/database/customer-repository";
 import { normalizePhone } from "../src/domain/phone";
+import { normalizeUsername } from "../src/domain/customer-identity";
 import { EARNING_POLICY_ID } from "../src/domain/rewards";
 import { readConfig } from "../src/env";
 import { parseTelegramUpdate, type TelegramUpdate } from "../src/telegram/types";
@@ -413,12 +414,17 @@ describe("stateful customer search and purchase", () => {
       method: "editMessageText",
       payload: { message_id: 19, reply_markup: { inline_keyboard: [] } }
     });
-    expect(purchaseSuccess).toContain("Points Earned: 10.00 points");
+    expect(purchaseSuccess).toContain("`Points Earned: 10.00 points`");
+    expect(purchaseSuccess).toContain("`Purchase Amount: BDT 500.00`");
+    expect(purchaseSuccess).toContain("*🏆 SoulShop Rewards Point System*");
     expect(purchaseSuccess).toContain(
-      "Your updated reward balance: 10.00 points\nEstimated reward value: BDT 3"
+      "*🎉 Congratulations!*\n\n"
+      + "Updated reward balance: 10.00 points\nEstimated reward value: *BDT 3*"
     );
     expect(purchaseSuccess).toContain(
-      "Buy More to Earn More\nThank you for purchasing from us\nBest Wishes from SoulShop"
+      "&gt; Buy More to Earn More\n"
+      + "&gt; Thank you for purchasing from us\n"
+      + "&gt; Best Wishes from SoulShop"
     );
 
     await processTelegramUpdate(
@@ -477,7 +483,7 @@ describe("stateful customer search and purchase", () => {
       + "Latest Transaction:\n"
       + "<b>10 Aug 2026, 06:27 PM</b>\n"
       + "PURCHASE: +11.00 points\n"
-      + "Purchase Amount: BDT 550\n\n"
+      + "Purchase Amount: BDT 550.00\n\n"
       + "Enter the purchase amount in BDT."
     );
     state = (await context.states.get("123456789")).state;
@@ -1354,49 +1360,106 @@ describe("multi-identifier workflows", () => {
 });
 
 describe("administrator leaderboard workflow", () => {
-  it("opens /leaderboard and displays weekly phone-only results", async () => {
+  it.each([
+    ["w", "LEADERBOARD_WEEKLY", "Weekly"],
+    ["m", "LEADERBOARD_MONTHLY", "Monthly"]
+  ] as const)("displays phone, WhatsApp, Telegram, and alias indicators on the %s view", async (
+    typeCode,
+    expectedStep,
+    title
+  ) => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
-    const created = await context.customers.createZeroBalance(
+    const allIdentifiers = await context.customers.createZeroBalance(
       normalizePhone("01712345678"),
       700,
       new Date().toISOString()
     );
+    const withWhatsapp = await context.customers.changeIdentifier(
+      allIdentifiers.customer.id,
+      "WHATSAPP_USERNAME",
+      null,
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "All.WA") },
+      new Date().toISOString()
+    );
+    const withAll = await context.customers.changeIdentifier(
+      allIdentifiers.customer.id,
+      "TELEGRAM_USERNAME",
+      null,
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "All_TG") },
+      new Date().toISOString()
+    );
+    expect(withWhatsapp.changed).toBe(true);
+    expect(withAll.changed).toBe(true);
+
+    const whatsappOnly = await context.customers.createZeroBalance(
+      { type: "WHATSAPP_USERNAME", username: normalizeUsername("WHATSAPP_USERNAME", "WA.Only") },
+      701,
+      new Date().toISOString()
+    );
+    const telegramOnly = await context.customers.createZeroBalance(
+      { type: "TELEGRAM_USERNAME", username: normalizeUsername("TELEGRAM_USERNAME", "TG_Only") },
+      702,
+      new Date().toISOString()
+    );
+
     await new RewardMutationService(env.DB).mutate({
-      customerId: created.customer.id,
+      customerId: withAll.customer.id,
       type: "MANUAL_ADD",
-      pointUnits: 12_500,
+      pointUnits: 30_000,
       purchaseAmountBdt: null,
       note: null,
-      telegramUpdateId: 701,
+      telegramUpdateId: 710,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(env.DB).mutate({
+      customerId: whatsappOnly.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 20_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 711,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(env.DB).mutate({
+      customerId: telegramOnly.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 712,
       expectedBalanceUnits: 0
     });
 
-    await processTelegramUpdate(context, message(702, 123456789, "/leaderboard"));
+    await processTelegramUpdate(context, message(720, 123456789, "/leaderboard"));
     let state = (await context.states.get("123456789")).state;
     expect(state?.currentStep).toBe("LEADERBOARD_MENU");
     await processTelegramUpdate(
       context,
-      callback(703, 123456789, `lb:w:${state?.payload.token ?? ""}`)
+      callback(721, 123456789, `lb:${typeCode}:${state?.payload.token ?? ""}`)
     );
     state = (await context.states.get("123456789")).state;
-    expect(state?.currentStep).toBe("LEADERBOARD_WEEKLY");
+    expect(state?.currentStep).toBe(expectedStep);
     await processTelegramUpdate(
       context,
-      callback(704, 123456789, `lbv:w:0:${state?.payload.token ?? ""}`)
+      callback(722, 123456789, `lbv:${typeCode}:0:${state?.payload.token ?? ""}`)
     );
-    const result = calls.find((call) => String(call.payload?.text).includes("SoulShop Weekly Leaderboard"));
-    expect(String(result?.payload?.text)).toContain("+8801712345678 — 1.25 points");
+    const result = calls.find((call) => String(call.payload?.text).includes(`SoulShop ${title} Leaderboard`));
+    expect(String(result?.payload?.text)).toContain(
+      "1st · +8801712345678 — 3.00 pts (+2 aliases)\n"
+      + "2nd · WA @WA.Only — 2.00 pts\n"
+      + "3rd · TG @TG_Only — 1.00 pts"
+    );
     expect(String(result?.payload?.text)).not.toContain("Customer:");
-    expect(result).toMatchObject({ method: "editMessageText", payload: { message_id: 704 } });
+    expect(result).toMatchObject({ method: "editMessageText", payload: { message_id: 722 } });
     await processTelegramUpdate(
       context,
-      callback(705, 123456789, `lbv:w:0:${state?.payload.token ?? ""}`, 704)
+      callback(723, 123456789, `lbv:${typeCode}:0:${state?.payload.token ?? ""}`, 722)
     );
     const refreshed = calls.filter((call) =>
       call.method === "editMessageText"
-      && String(call.payload?.text).includes("SoulShop Weekly Leaderboard")
+      && String(call.payload?.text).includes(`SoulShop ${title} Leaderboard`)
     ).at(-1);
-    expect(refreshed).toMatchObject({ method: "editMessageText", payload: { message_id: 704 } });
+    expect(refreshed).toMatchObject({ method: "editMessageText", payload: { message_id: 722 } });
   });
 
   it("requires an authorized, current-token confirmation and makes repeated reset callbacks harmless", async () => {

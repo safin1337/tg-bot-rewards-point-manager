@@ -1,8 +1,8 @@
-import { dashboardKeyboard } from "../telegram/keyboards";
-import { BRAND, BRAND_NAME_HTML, dashboardMessage, helpMessage } from "../telegram/messages";
+import { dashboardKeyboard, toolsKeyboard } from "../telegram/keyboards";
+import { BRAND, dashboardMessage, helpMessage, toolsMenuMessage } from "../telegram/messages";
 import type { Operation } from "../types/models";
 import type { WorkflowContext } from "./context";
-import { startOperation } from "./common";
+import { showDashboard, startOperation } from "./common";
 
 const COMMAND_OPERATIONS: Readonly<Record<string, Operation>> = {
   purchase: "PURCHASE",
@@ -30,7 +30,12 @@ export const handleCommand = async (
 ): Promise<boolean> => {
   if (command === "start") {
     await context.states.clear(adminId);
-    await context.telegram.sendMessage(chatId, dashboardMessage(), { replyMarkup: dashboardKeyboard() });
+    await showDashboard(context, chatId);
+    return true;
+  }
+  if (command === "tools") {
+    await context.states.clear(adminId);
+    await context.telegram.sendMessage(chatId, toolsMenuMessage(), { replyMarkup: toolsKeyboard() });
     return true;
   }
   if (command === "help") {
@@ -39,9 +44,11 @@ export const handleCommand = async (
   }
   if (command === "cancel") {
     await context.states.clear(adminId);
+    const summary = await context.dashboard.summary();
+    const dashboard = dashboardMessage(summary).replace(`${BRAND}\n\n`, "");
     await context.telegram.sendMessage(
       chatId,
-      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`,
+      `${BRAND}\n\n✅ The current operation was cancelled.\n\n${dashboard}`,
       { replyMarkup: dashboardKeyboard() }
     );
     return true;
@@ -49,13 +56,13 @@ export const handleCommand = async (
   if (command === "restart") {
     const current = await context.states.get(adminId);
     if (current.state === null) {
-      await context.telegram.sendMessage(
-        chatId,
-        current.expired
-          ? `${BRAND}\n\n⏱️ The previous operation expired. Please start again.`
-          : dashboardMessage(),
-        { replyMarkup: dashboardKeyboard() }
-      );
+      if (current.expired) {
+        await context.telegram.sendMessage(
+          chatId,
+          `${BRAND}\n\n⏱️ The previous operation expired. Please start again.`
+        );
+      }
+      await showDashboard(context, chatId);
     } else {
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n🔄 The operation has been restarted.`);
       await startOperation(context, adminId, chatId, current.state.activeOperation, updateId);

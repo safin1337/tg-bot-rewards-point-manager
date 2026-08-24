@@ -1,12 +1,25 @@
 # Telegram active-message workflows
 
-V2.0.8 uses a hybrid message model to reduce clutter without making
+V2.0.9 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
 policy text, and CSV prefix derive from `src/config/app-config.ts`. Configurable
 values are HTML-escaped before Telegram insertion. With the default settings,
 the generated heading remains `SoulShop Rewards Point System`.
+
+## Dashboard and More Tools
+
+- `/start` loads fresh D1 totals for included customers, current point units,
+  lifetime redemption count, and lifetime redeemed point units. Each estimated
+  BDT value is recalculated once from its combined unit total.
+- The compact dashboard keeps Record Purchase and Check Balance, Redeem Points
+  and Leaderboard, Customer History and Add New Customer, then one full-width
+  `More Tools` button.
+- `More Tools` and `/tools` show Manage Customer Identities, Manage Test
+  Accounts, Add Points Manually, Export Data, Help, and Back to Dashboard on
+  separate full-width rows. Direct legacy commands remain routable even when
+  omitted from BotFather's shorter visible command list.
 
 ## Non-text Telegram updates
 
@@ -38,7 +51,8 @@ the generated heading remains `SoulShop Rewards Point System`.
 ## Customer-selection context
 
 - Record Purchase, Add Points Manually, Redeem Points, Check Balance, Customer
-  History, and Manage Customer Identities selection panels show the active operation as a bold,
+  History, Manage Customer Identities, and Manage Test Accounts selection
+  panels show the active operation as a bold,
   emoji-prefixed heading between the configured application heading and
   `Select a customer:`.
 - Record Purchase uses the `🛍️` emoji on the dashboard, selection heading, and
@@ -97,6 +111,26 @@ the generated heading remains `SoulShop Rewards Point System`.
   the repository recognizes that the requested value is already current.
 - Identity management changes only alias columns and `updated_at_utc`; reward
   balances, transactions, receipts, and leaderboard aggregates are untouched.
+
+## Test-account management
+
+- The administrator selects an existing customer through the normal four
+  search methods. Workflow state stores the authoritative D1 customer ID.
+- Mark/convert confirmation rotates the token and stores the exact displayed
+  classification. A stale button cannot overwrite a newer decision, and a
+  display retry after commit is harmless.
+- Marking an account preserves its balance and retained transactions. With the
+  default exclusion policy, it atomically removes that customer's retained
+  leaderboard aggregates.
+- Test accounts remain usable for purchase, manual addition, redemption,
+  balance, and history. Customer-specific blocks visibly show
+  `🧪 Test Account`.
+- Conversion to a normal customer is blocked until exact
+  `point_balance_units` is zero. `Redeem All Points` remains available while
+  the account is test, and that redemption is excluded from lifetime business
+  totals by default.
+- Classification affects future activity. Existing test history is never
+  deleted or retroactively added to the lifetime summary.
 
 ## Customer Info presentation
 

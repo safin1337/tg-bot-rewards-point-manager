@@ -30,7 +30,8 @@ const customizedConfig = {
       }
     },
     redemption: { points: 4, valueBdt: 1 }
-  }
+  },
+  analytics: APP_CONFIG.analytics
 } as const satisfies AppConfiguration;
 
 const expectedConfiguredPolicyId = (mode: EarningMode): string => mode === "flat"
@@ -116,6 +117,24 @@ describe("central application configuration", () => {
       valueBdt: 1,
       pointUnitsPerRewardBdt: 40_000
     });
+  });
+
+  it("validates and exposes every test-account analytics switch", () => {
+    expect(APP_RUNTIME_CONFIG.analytics.testAccounts).toEqual({
+      excludeFromDashboard: true,
+      excludeFromLeaderboards: true,
+      excludeFromLifetimeRedemptions: true
+    });
+    const invalid = {
+      ...APP_CONFIG,
+      analytics: {
+        testAccounts: {
+          ...APP_CONFIG.analytics.testAccounts,
+          excludeFromDashboard: "yes"
+        }
+      }
+    } as unknown as AppConfiguration;
+    expect(() => deriveAppConfiguration(invalid)).toThrow(/excludeFromDashboard.*boolean/i);
   });
 
   it("derives recursive point floors from the configured bracket boundaries", () => {

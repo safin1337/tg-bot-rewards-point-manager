@@ -33,6 +33,13 @@ export interface AppConfiguration {
       valueBdt: number;
     };
   };
+  analytics: {
+    testAccounts: {
+      excludeFromDashboard: boolean;
+      excludeFromLeaderboards: boolean;
+      excludeFromLifetimeRedemptions: boolean;
+    };
+  };
 }
 
 export const APP_CONFIG = {
@@ -140,6 +147,22 @@ export const APP_CONFIG = {
       points: 4,
       valueBdt: 1
     }
+  },
+
+  analytics: {
+    testAccounts: {
+      excludeFromDashboard: true,
+      // true = exclude test accounts from the customer count, points, and BDT totals.
+      // false = include test accounts in the dashboard totals.
+
+      excludeFromLeaderboards: true,
+      // true = test accounts cannot appear in weekly or monthly rankings.
+      // false = test accounts can rank like normal customer accounts.
+
+      excludeFromLifetimeRedemptions: true
+      // true = future test-account redemptions do not update lifetime business totals.
+      // false = future test-account redemptions update lifetime totals like normal accounts.
+    }
   }
 } as const satisfies AppConfiguration;
 
@@ -188,6 +211,7 @@ export interface RuntimeAppConfiguration {
       pointUnitsPerRewardBdt: number;
     };
   };
+  analytics: AppConfiguration["analytics"];
 }
 
 const requirePositiveSafeInteger = (value: number, path: string): void => {
@@ -362,6 +386,25 @@ export const deriveAppConfiguration = (config: AppConfiguration): RuntimeAppConf
     config.rewards.redemption.valueBdt,
     "APP_CONFIG.rewards.redemption"
   );
+  const rawAnalytics: unknown = config.analytics;
+  if (typeof rawAnalytics !== "object" || rawAnalytics === null) {
+    throw new Error("APP_CONFIG.analytics must be an object.");
+  }
+  const rawTestAccounts: unknown = (rawAnalytics as { testAccounts?: unknown }).testAccounts;
+  if (typeof rawTestAccounts !== "object" || rawTestAccounts === null) {
+    throw new Error("APP_CONFIG.analytics.testAccounts must be an object.");
+  }
+  const analyticsKeys = [
+    "excludeFromDashboard",
+    "excludeFromLeaderboards",
+    "excludeFromLifetimeRedemptions"
+  ] as const;
+  for (const key of analyticsKeys) {
+    if (typeof (rawTestAccounts as Record<string, unknown>)[key] !== "boolean") {
+      throw new Error(`APP_CONFIG.analytics.testAccounts.${key} must be a boolean.`);
+    }
+  }
+  const testAccounts = rawTestAccounts as AppConfiguration["analytics"]["testAccounts"];
 
   return {
     brand: {
@@ -378,7 +421,8 @@ export const deriveAppConfiguration = (config: AppConfiguration): RuntimeAppConf
         valueBdt: config.rewards.redemption.valueBdt,
         pointUnitsPerRewardBdt
       }
-    }
+    },
+    analytics: { testAccounts }
   };
 };
 

@@ -38,7 +38,7 @@ export class ExportService {
     const contents = createCsv(
       [
         "customer_id", "whatsapp_number", "whatsapp_username", "telegram_username",
-        "current_points", "point_balance_units",
+        "account_type", "current_points", "point_balance_units",
         "rounded_reward_bdt", "created_at_utc", "created_at_dhaka", "updated_at_utc",
         "updated_at_dhaka"
       ],
@@ -47,6 +47,7 @@ export class ExportService {
         customer.whatsappNumber,
         customer.whatsappUsername,
         customer.telegramUsername,
+        customer.isTest ? "TEST" : "CUSTOMER",
         formatPointUnits(customer.pointBalanceUnits),
         customer.pointBalanceUnits,
         customer.roundedRewardBdt,
@@ -68,7 +69,7 @@ export class ExportService {
     const contents = createCsv(
       [
         "transaction_id", "customer_id", "whatsapp_number", "whatsapp_username",
-        "telegram_username", "transaction_type",
+        "telegram_username", "account_type", "transaction_type",
         "purchase_amount_bdt", "points_delta", "points_delta_units", "balance_before",
         "balance_before_units", "balance_after", "balance_after_units",
         "rounded_reward_before_bdt", "rounded_reward_after_bdt",
@@ -81,6 +82,7 @@ export class ExportService {
         transaction.whatsappNumber,
         transaction.whatsappUsername,
         transaction.telegramUsername,
+        transaction.isTest ? "TEST" : "CUSTOMER",
         transaction.transactionType,
         transaction.purchaseAmountBdt,
         `${transaction.pointsDeltaUnits > 0 ? "+" : ""}${formatPointUnits(transaction.pointsDeltaUnits)}`,

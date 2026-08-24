@@ -9,6 +9,7 @@ import { TransactionRepository } from "../src/database/transaction-repository";
 import { normalizeUsername } from "../src/domain/customer-identity";
 import { normalizePhone } from "../src/domain/phone";
 import { purchaseToPointUnits } from "../src/domain/rewards";
+import { DashboardRepository } from "../src/database/dashboard-repository";
 
 const customers = () => new CustomerRepository(env.DB);
 const transactions = () => new TransactionRepository(env.DB);
@@ -22,6 +23,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM leaderboard_periods"),
     env.DB.prepare("DELETE FROM transactions"),
     env.DB.prepare("DELETE FROM mutation_receipts"),
+    env.DB.prepare("DELETE FROM lifetime_redemption_snapshots"),
     env.DB.prepare("DELETE FROM customers")
   ]);
 });
@@ -35,7 +37,7 @@ describe("clean migration", () => {
     expect(names).toEqual(expect.arrayContaining([
       "customers", "transactions", "conversation_states", "processed_updates",
       "mutation_receipts", "leaderboard_periods", "leaderboard_aggregates",
-      "leaderboard_reset_receipts"
+      "leaderboard_reset_receipts", "lifetime_redemption_snapshots"
     ]));
   });
 
@@ -174,6 +176,17 @@ describe("multi-identifier customer identity", () => {
          creation_telegram_update_id, created_at_utc, updated_at_utc
        ) VALUES ('invalid.telegram', 0, 0, 692, ?, ?)`
     ).bind("2026-08-16T06:02:00.000Z", "2026-08-16T06:02:00.000Z").run()).rejects.toThrow();
+  });
+
+  it("adds test-account classification and global lifetime-redemption storage", async () => {
+    const customerColumns = await env.DB.prepare("PRAGMA table_info(customers)")
+      .all<{ name: string }>();
+    expect(customerColumns.results.map((column) => column.name)).toContain("is_test");
+    const snapshotIndexes = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name"
+    ).all<{ name: string }>();
+    expect(snapshotIndexes.results.map((row) => row.name))
+      .toContain("idx_lifetime_redemption_snapshots_newest");
   });
 
   it("preserves username capitalization while lookup and uniqueness are case-insensitive", async () => {
@@ -349,6 +362,187 @@ describe("multi-identifier customer identity", () => {
 });
 
 describe("atomic reward mutations and idempotency", () => {
+  it("excludes test activity, requires zero before conversion, and preserves reward records", async () => {
+    const repository = customers();
+    const created = await repository.createZeroBalance(
+      normalizePhone("01712345678"),
+      470,
+      "2026-08-24T10:00:00.000Z"
+    );
+    expect(created.customer.isTest).toBe(false);
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-24T10:01:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 100_000,
+      purchaseAmountBdt: null,
+      note: "test setup",
+      telegramUpdateId: 471,
+      expectedBalanceUnits: 0
+    });
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM leaderboard_aggregates WHERE customer_id = ?"
+    ).bind(created.customer.id).first<{ count: number }>())?.count).toBe(2);
+
+    const marked = await repository.changeTestAccountStatus(
+      created.customer.id,
+      false,
+      true,
+      "2026-08-24T10:02:00.000Z"
+    );
+    expect(marked).toMatchObject({ changed: true, duplicate: false, customer: { isTest: true } });
+    expect((await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM leaderboard_aggregates WHERE customer_id = ?"
+    ).bind(created.customer.id).first<{ count: number }>())?.count).toBe(0);
+    await expect(repository.changeTestAccountStatus(
+      created.customer.id,
+      true,
+      false,
+      "2026-08-24T10:03:00.000Z"
+    )).rejects.toMatchObject({ code: "TEST_ACCOUNT_BALANCE" });
+
+    await new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-24T10:04:00.000Z")
+    ).mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 100_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 472,
+      expectedBalanceUnits: 100_000
+    });
+    expect((await new DashboardRepository(env.DB).summary()).lifetimeRedemptionCount).toBe(0);
+    expect((await transactions().listForCustomer(created.customer.id, 0)).transactions).toHaveLength(2);
+
+    const converted = await repository.changeTestAccountStatus(
+      created.customer.id,
+      true,
+      false,
+      "2026-08-24T10:05:00.000Z"
+    );
+    expect(converted).toMatchObject({ changed: true, duplicate: false, customer: { isTest: false } });
+    const replay = await repository.changeTestAccountStatus(
+      created.customer.id,
+      true,
+      false,
+      "2026-08-24T10:05:00.000Z"
+    );
+    expect(replay).toMatchObject({ changed: false, duplicate: true, customer: { isTest: false } });
+  });
+
+  it("keeps the latest 40 cumulative redemption snapshots and the full lifetime total", async () => {
+    const created = await customers().createZeroBalance(
+      normalizePhone("01712345678"),
+      600,
+      "2026-08-24T11:00:00.000Z"
+    );
+    const service = new RewardMutationService(
+      env.DB,
+      () => new Date("2026-08-24T11:01:00.000Z")
+    );
+    await service.mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 410_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 601,
+      expectedBalanceUnits: 0
+    });
+    for (let index = 0; index < 41; index += 1) {
+      await service.mutate({
+        customerId: created.customer.id,
+        type: "REDEEM",
+        pointUnits: 10_000,
+        purchaseAmountBdt: null,
+        note: null,
+        telegramUpdateId: 602 + index,
+        expectedBalanceUnits: 410_000 - index * 10_000
+      });
+    }
+    const rows = await env.DB.prepare(
+      `SELECT redemption_count, redeemed_point_units, cumulative_redeemed_point_units
+       FROM lifetime_redemption_snapshots ORDER BY redemption_count ASC`
+    ).all<{
+      redemption_count: number;
+      redeemed_point_units: number;
+      cumulative_redeemed_point_units: number;
+    }>();
+    expect(rows.results).toHaveLength(40);
+    expect(rows.results[0]).toMatchObject({
+      redemption_count: 2,
+      redeemed_point_units: 10_000,
+      cumulative_redeemed_point_units: 20_000
+    });
+    expect(rows.results.at(-1)).toMatchObject({
+      redemption_count: 41,
+      cumulative_redeemed_point_units: 410_000
+    });
+    expect(await new DashboardRepository(env.DB).summary()).toMatchObject({
+      customerCount: 1,
+      currentPointUnits: 0,
+      lifetimeRedemptionCount: 41,
+      lifetimeRedeemedPointUnits: 410_000
+    });
+    const replay = await service.mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 642,
+      expectedBalanceUnits: 10_000
+    });
+    expect(replay.duplicate).toBe(true);
+    expect((await new DashboardRepository(env.DB).summary()).lifetimeRedemptionCount).toBe(41);
+  });
+
+  it("rolls back a redemption when its cumulative lifetime snapshot cannot be stored", async () => {
+    const created = await customers().createZeroBalance(
+      normalizePhone("01712345678"),
+      650,
+      "2026-08-24T12:00:00.000Z"
+    );
+    const service = new RewardMutationService(env.DB);
+    await service.mutate({
+      customerId: created.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 20_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 651,
+      expectedBalanceUnits: 0
+    });
+    await env.DB.prepare(
+      `INSERT INTO lifetime_redemption_snapshots (
+         telegram_update_id, redemption_count, redeemed_point_units,
+         cumulative_redeemed_point_units, recorded_at_utc
+       ) VALUES (?, ?, 1, 1, ?)`
+    ).bind(9_000, Number.MAX_SAFE_INTEGER, "2026-08-24T12:01:00.000Z").run();
+
+    await expect(service.mutate({
+      customerId: created.customer.id,
+      type: "REDEEM",
+      pointUnits: 10_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 652,
+      expectedBalanceUnits: 20_000
+    })).rejects.toThrow();
+    expect(await customers().findById(created.customer.id)).toMatchObject({
+      pointBalanceUnits: 20_000,
+      latestMutationTelegramUpdateId: 651
+    });
+    expect(await transactions().findByUpdateId(652)).toBeNull();
+    expect(await env.DB.prepare(
+      "SELECT status FROM mutation_receipts WHERE telegram_update_id = 652"
+    ).first()).toBeNull();
+  });
+
   it("records purchase snapshots and does not process a duplicate twice", async () => {
     const created = await customers().createZeroBalance(
       normalizePhone("01712345678"),

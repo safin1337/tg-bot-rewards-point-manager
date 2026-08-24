@@ -5,9 +5,11 @@ import type { NormalizedPhone } from "../domain/phone";
 import { validateSearchDigits } from "../domain/phone";
 import type { Customer } from "../types/models";
 import { mapCustomer } from "./validation";
+import { APP_RUNTIME_CONFIG } from "../config/app-config";
 
 export interface CustomerSearchPage { customers: Customer[]; hasNext: boolean; }
 export interface IdentifierChangeResult { customer: Customer; changed: boolean; duplicate: boolean; }
+export interface TestAccountChangeResult { customer: Customer; changed: boolean; duplicate: boolean; }
 
 const nextValue = (identifier: CustomerIdentifierInput | null): string | null => {
   if (identifier === null) return null;
@@ -215,6 +217,60 @@ export class CustomerRepository {
       }
       throw error;
     }
+  }
+
+  async changeTestAccountStatus(
+    customerId: number,
+    expectedIsTest: boolean,
+    nextIsTest: boolean,
+    timestamp: string
+  ): Promise<TestAccountChangeResult> {
+    const before = await this.findById(customerId);
+    if (before === null) throw new DomainError("IDENTIFIER_STALE", "The selected customer no longer exists.");
+    if (before.isTest !== expectedIsTest) {
+      if (before.isTest === nextIsTest) {
+        return { customer: before, changed: false, duplicate: true };
+      }
+      throw new DomainError("IDENTIFIER_STALE", "The account type changed. Please review and try again.");
+    }
+    if (before.isTest === nextIsTest) {
+      return { customer: before, changed: false, duplicate: false };
+    }
+    if (!nextIsTest && before.pointBalanceUnits !== 0) {
+      throw new DomainError(
+        "TEST_ACCOUNT_BALANCE",
+        "A test account must have a zero point balance before conversion to a customer account."
+      );
+    }
+
+    const statements: D1PreparedStatement[] = [
+      this.db.prepare(
+        `UPDATE customers SET is_test = ?, updated_at_utc = ?
+         WHERE id = ? AND is_test = ?
+           AND (? = 1 OR point_balance_units = 0)`
+      ).bind(nextIsTest ? 1 : 0, timestamp, customerId, expectedIsTest ? 1 : 0, nextIsTest ? 1 : 0)
+    ];
+    if (nextIsTest && APP_RUNTIME_CONFIG.analytics.testAccounts.excludeFromLeaderboards) {
+      statements.push(
+        this.db.prepare("DELETE FROM leaderboard_aggregates WHERE customer_id = ?").bind(customerId)
+      );
+    }
+    const results = await this.db.batch(statements);
+    const after = await this.findById(customerId);
+    if (after === null) throw new DomainError("IDENTIFIER_STALE", "The selected customer no longer exists.");
+    if (results[0]?.meta.changes === 1 && after.isTest === nextIsTest) {
+      return { customer: after, changed: true, duplicate: false };
+    }
+    if (after.isTest === nextIsTest) {
+      return { customer: after, changed: false, duplicate: true };
+    }
+    if (!nextIsTest && after.pointBalanceUnits !== 0) {
+      throw new DomainError(
+        "TEST_ACCOUNT_BALANCE",
+        "A test account must have a zero point balance before conversion to a customer account."
+      );
+    }
+    throw new DomainError("IDENTIFIER_STALE", "The account type changed. Please review and try again.");
   }
 
   async searchBySuffix(digits: string, page: number): Promise<CustomerSearchPage> {

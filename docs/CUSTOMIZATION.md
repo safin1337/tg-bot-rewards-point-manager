@@ -134,6 +134,31 @@ required to make those records consistent. Resetting D1 is acceptable only for
 a disposable local/test installation. Never reset a production database
 without an approved backup, migration plan, and explicit authorization.
 
+## Test-account analytics switches
+
+Test membership is selected through the bot and stored on the customer row;
+never put customer phone numbers, usernames, or IDs in `APP_CONFIG`. The global
+policy is centralized here:
+
+```ts
+analytics: {
+  testAccounts: {
+    excludeFromDashboard: true,
+    excludeFromLeaderboards: true,
+    excludeFromLifetimeRedemptions: true
+  }
+}
+```
+
+The adjacent source comments explain both Boolean states. `true` applies the
+named exclusion; `false` includes test accounts like normal accounts for that
+feature. All three values are validated at startup.
+
+Changing a switch does not reclassify customers or retroactively rewrite
+activity. Dashboard and leaderboard reads use the current policy. Lifetime
+redemption eligibility is decided when each future redemption commits, so a
+later configuration change does not add or subtract older snapshots.
+
 ## CSV filename prefix
 
 The configured brand is converted to a lowercase, hyphenated ASCII prefix:
@@ -142,8 +167,8 @@ The configured brand is converted to a lowercase, hyphenated ASCII prefix:
 - `Example Store` becomes `example-store`.
 - A name with no usable ASCII filename characters uses `loyalty-rewards`.
 
-CSV content, exact four-decimal point values, privacy protections, and row/byte
-limits are unchanged.
+CSV exact four-decimal point values, privacy protections, and row/byte limits
+are unchanged. V2.0.9 adds `account_type` to both export types.
 
 ## Infrastructure rebranding checklist
 

@@ -1,6 +1,6 @@
 # Fresh Installation Guide
 
-This is the authoritative, detailed setup guide for installing V2.0.8 in a new
+This is the authoritative, detailed setup guide for installing V2.0.9 in a new
 Cloudflare account and connecting a new Telegram bot. Start with the project
 overview and business rules in the [README](../README.md). For branding and
 reward-policy changes, also read [CUSTOMIZATION.md](CUSTOMIZATION.md).
@@ -63,18 +63,18 @@ git --version
 
 ## 2. Open and install
 
-For a fresh Git checkout, clone the repository, select the V2.0.8 release, and
+For a fresh Git checkout, clone the repository, select the V2.0.9 release, and
 install the exact dependencies recorded in `package-lock.json`:
 
 ```powershell
 git clone <YOUR_REPOSITORY_URL>
 Set-Location "<CLONED_PROJECT_DIRECTORY>"
-git checkout v2.0.8
+git checkout v2.0.9
 code .
 npm.cmd ci
 ```
 
-If the project is already downloaded and checked out at V2.0.8, open PowerShell
+If the project is already downloaded and checked out at V2.0.9, open PowerShell
 in that directory and run:
 
 ```powershell
@@ -169,10 +169,14 @@ before deploying the V2.0.7 Worker, and verify foreign keys. Follow the
 mandatory [V2.0.7 release guide](V2.0.7-RELEASE.md); no production migration is
 performed automatically.
 
-V2.0.8 adds no migration. Fresh installations still apply the complete chain
-through `0008`; existing V2.0.7 installations must verify that `0008` is
-already applied, run the local validation gates, and deploy only the matching
-V2.0.8 Worker. Follow the [V2.0.8 release guide](V2.0.8-RELEASE.md).
+V2.0.9 adds `0009_dashboard_and_test_accounts.sql`. It adds per-customer test
+classification, cumulative lifetime-redemption snapshots, and the new workflow
+operation without changing existing balances or retained history. Its lifetime
+counter intentionally starts empty because all pre-release redemptions are
+disposable test activity. Existing installations must back up D1, apply 0009,
+verify the empty snapshot table and default `is_test = 0` values, deploy only
+the matching V2.0.9 Worker, then mark the known test accounts through the bot.
+Follow the mandatory [V2.0.9 release guide](V2.0.9-RELEASE.md).
 
 For V2.0.2, review [the bounded-storage hotfix runbook](V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 
@@ -354,7 +358,8 @@ Remove-Item Env:PUBLIC_WORKER_URL
 
 Using only the configured administrator account:
 
-1. `/start` displays all dashboard actions.
+1. `/start` displays customer, current-point/current-BDT, and lifetime-
+   redemption totals plus the compact dashboard actions.
 2. Record Purchase uses `🛍️`, and Record Purchase, Add Points Manually, Redeem Points, Check Balance, and Customer History each show their bold operation heading above `Select a customer:`.
 3. Selecting phone suffix, full phone, WhatsApp username, or Telegram username search repeats the selected operation above the relevant entry copy, and customer-search screens use the compact `⬅️ Back` button.
 4. `/addcustomer` asks for an initial identifier type; verify phone creation and username-only creation both start at zero points with no reward transaction. A leading username `@` is discarded while capitalization remains visible. Verify the standardized phone/WhatsApp-username/Telegram-username prompts, copied bidirectional-control cleanup, valid WhatsApp periods, Telegram period rejection, and a valid retry immediately after invalid input.
@@ -363,14 +368,17 @@ Using only the configured administrator account:
 7. `/redeem` rejects an amount above the balance, accepts a valid fraction, and clearly separates redeemed and remaining values. Verify that `Redeem All Points` still requires confirmation and reduces an exact balance with hidden third/fourth decimal precision to `0.00` without an insufficient-balance error.
 8. `/balance` labels the latest total as the current reward balance and its rounded BDT amount as the estimated reward value.
 9. `/history` shows newest-first entries in Asia/Dhaka time.
-10. `/export` sends the selected CSV file(s).
+10. `/export` sends the selected CSV file(s), including `account_type` in both.
 11. `/managecustomer` finds one D1 customer by any alias; add/change/remove each alias type, reject a same-platform duplicate, preserve capitalization-only username changes, and block removal of the final alias. Confirm balances/history/leaderboards stay unchanged and full customer-specific screens show only existing identifiers in the ordered `Customer Info:` block.
 12. `/leaderboard` shows the five supported period views, identifier-aware top-10 rankings, and independent reset confirmations. Verify `WA`/`TG` username labels, primary-identifier priority, and exact `(+1 alias)`/`(+2 aliases)` indicators in both weekly and monthly views.
 13. Reset Current Week leaves monthly totals unchanged; Reset Current Month leaves weekly totals unchanged.
-14. `/restart` drops collected values and restarts the same operation.
-15. `/cancel` clears state and returns to the dashboard.
-16. Purchase, manual-add, redemption, and balance results display each closing tagline with a visible `> ` prefix; history omits them.
-17. A different Telegram user cannot search, mutate, export, view leaderboards, or reset them.
+14. `/tools` opens the secondary menu. Mark a disposable account as test,
+    confirm its marker and exclusions, and verify conversion is blocked until
+    its exact point balance is zero.
+15. `/restart` drops collected values and restarts the same operation.
+16. `/cancel` clears state and returns to the informative dashboard.
+17. Purchase, manual-add, redemption, and balance results display each closing tagline with a visible `> ` prefix; history omits them.
+18. A different Telegram user cannot search, mutate, export, view leaderboards, or reset them.
 
 ## 14. Logs and diagnostics
 
@@ -407,7 +415,13 @@ npx wrangler d1 execute soulshop-rewards-db `
   --command="SELECT * FROM transactions ORDER BY created_at_utc DESC, id DESC;"
 ```
 
-Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention atomically removes rows beyond the newest 40 per customer and their matching completed receipts. The customer mutation update-ID high-water mark preserves delayed-update protection. Leaderboard aggregates are independent of detailed history.
+Lifetime redemption summary:
+
+```powershell
+npx wrangler d1 execute soulshop-rewards-db --remote --command="SELECT * FROM lifetime_redemption_snapshots ORDER BY redemption_count DESC LIMIT 40;"
+```
+
+Customer balances are the source of truth. Detailed transactions are append-only when created, then controlled retention atomically removes rows beyond the newest 40 per customer and their matching completed receipts. The customer mutation update-ID high-water mark preserves delayed-update protection. Leaderboard aggregates and cumulative lifetime-redemption snapshots are independent of detailed history.
 
 The Record Purchase and Add Points amount-entry panels perform one read-only
 lookup for the newest retained `PURCHASE` or `MANUAL_ADD`; they skip `REDEEM`.

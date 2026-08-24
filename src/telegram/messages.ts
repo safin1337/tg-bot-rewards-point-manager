@@ -13,7 +13,15 @@ import {
   type CustomerIdentifierType
 } from "../domain/customer-identity";
 import { formatLeaderboardPointUnits, type LeaderboardPeriod } from "../domain/leaderboard";
-import type { Customer, LeaderboardEntry, LeaderboardPeriodType, Operation, RewardTransaction } from "../types/models";
+import { roundRewardBdt } from "../domain/rewards";
+import type {
+  Customer,
+  DashboardSummary,
+  LeaderboardEntry,
+  LeaderboardPeriodType,
+  Operation,
+  RewardTransaction
+} from "../types/models";
 import { formatPurchaseAmountBdt } from "../utils/bdt";
 import { escapeHtml } from "../utils/html";
 import { formatDhakaDateTime } from "../utils/time";
@@ -42,8 +50,11 @@ export const BRAND = TELEGRAM_BRANDING.headingHtml;
 export const WHATSAPP_SHARE_BRAND = TELEGRAM_BRANDING.whatsappShareHeadingHtml;
 export const TAGLINES = TELEGRAM_BRANDING.taglinesHtml;
 
-export const dashboardMessage = (): string =>
-  `${BRAND}\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`;
+export const dashboardMessage = (summary: DashboardSummary): string =>
+  `${BRAND}\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.\n\n📊 <b>Business Overview</b>\nRegistered customers: ${summary.customerCount}\nCurrent customer points: ${formatPointUnitsForDisplay(summary.currentPointUnits)} points\nEstimated current reward value: BDT ${roundRewardBdt(summary.currentPointUnits)}\n\n🎁 <b>Lifetime Redemptions</b>\nTotal redemptions: ${summary.lifetimeRedemptionCount}\nTotal redeemed points: ${formatPointUnitsForDisplay(summary.lifetimeRedeemedPointUnits)} points\nEstimated redeemed value: BDT ${roundRewardBdt(summary.lifetimeRedeemedPointUnits)}`;
+
+export const toolsMenuMessage = (): string =>
+  `${BRAND}\n\n⚙️ <b>More Tools</b>\n\nChoose a management tool:`;
 
 export const unsupportedNonTextMessage = (): string =>
   `${BRAND}\n\n⚠️ Images and other non-text messages are not supported. Please send text, use the available buttons, or use /cancel.`;
@@ -56,7 +67,8 @@ const CUSTOMER_SELECTION_OPERATIONS = {
   REDEEM: { emoji: "🎁", label: "Redeem Points" },
   BALANCE: { emoji: "💰", label: "Check Balance" },
   HISTORY: { emoji: "📜", label: "Customer History" },
-  MANAGE_CUSTOMER: { emoji: "🪪", label: "Manage Customer Identities" }
+  MANAGE_CUSTOMER: { emoji: "🪪", label: "Manage Customer Identities" },
+  MANAGE_TEST_ACCOUNT: { emoji: "🧪", label: "Manage Test Accounts" }
 } satisfies Readonly<Record<CustomerSelectionOperation, { emoji: string; label: string }>>;
 
 const customerSelectionHeading = (operation: CustomerSelectionOperation): string => {
@@ -67,7 +79,7 @@ const customerSelectionHeading = (operation: CustomerSelectionOperation): string
 type CustomerInfo = Pick<
   Customer,
   "whatsappNumber" | "whatsappUsername" | "telegramUsername"
->;
+> & { isTest?: boolean };
 
 export const customerInfoBlock = (customer: CustomerInfo): string => {
   const lines = [
@@ -82,7 +94,11 @@ export const customerInfoBlock = (customer: CustomerInfo): string => {
       : [`Telegram Username: ${escapeHtml(`@${customer.telegramUsername}`)}`])
   ];
   if (lines.length === 0) throw new Error("Customer has no identifier.");
-  return ["Customer Info:", ...lines].join("\n");
+  return [
+    ...(customer.isTest === true ? ["🧪 Test Account"] : []),
+    "Customer Info:",
+    ...lines
+  ].join("\n");
 };
 
 const whatsappMonospaceLines = (lines: readonly string[]): string =>
@@ -244,6 +260,8 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 
 • /addcustomer — register a zero-point customer.
 • /managecustomer — add, change, or remove a customer's current identifiers.
+• /tools — open identity, test-account, manual-points, export, and help tools.
+• Test-account behavior is controlled by the documented APP_CONFIG analytics switches.
 • For purchase, points, redemption, balance, history, or customer management, search by WhatsApp phone, WhatsApp username, or Telegram username.
 • Phone search accepts exactly the final 4 or 5 digits or a complete number; username search is exact and case-insensitive.
 • Spaces and supported hyphens are accepted in complete phone numbers.
@@ -456,6 +474,50 @@ Customer ID: ${customer.id}
 ${customerInfoBlock(customer)}
 
 Choose an identifier to add, change, or remove.`;
+
+export const manageTestAccountMessage = (customer: Customer): string => `${BRAND}
+
+🧪 <b>Manage Test Account</b>
+
+Customer ID: ${customer.id}
+
+${customerInfoBlock(customer)}
+Account Type: ${customer.isTest ? "Test Account" : "Customer Account"}
+Current Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+
+${customer.isTest
+    ? "Convert this test account to a customer account only after its point balance reaches zero."
+    : "Mark this account as a test account to apply the configured analytics exclusions."}`;
+
+export const testAccountConfirmationMessage = (
+  customer: Customer,
+  nextIsTest: boolean
+): string => `${BRAND}
+
+⚠️ <b>Confirm Account Type Change</b>
+
+Customer ID: ${customer.id}
+
+${customerInfoBlock(customer)}
+Current Type: ${customer.isTest ? "Test Account" : "Customer Account"}
+New Type: ${nextIsTest ? "Test Account" : "Customer Account"}
+
+${nextIsTest
+    ? "Configured test-account exclusions will apply immediately. Existing balances and transaction history will remain unchanged."
+    : "Only future eligible activity will count as normal customer activity. Existing test activity will not be backfilled."}`;
+
+export const testAccountChangeSuccessMessage = (
+  customer: Customer,
+  duplicate: boolean
+): string => `${BRAND}
+
+${duplicate ? "ℹ️ This account type change was already processed." : "✅ Account type updated successfully."}
+
+${customerInfoBlock(customer)}
+Account Type: ${customer.isTest ? "Test Account" : "Customer Account"}
+Current Points: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+
+Balances and transaction history were not changed.`;
 
 export const identityChangeConfirmationMessage = (
   customer: Customer,

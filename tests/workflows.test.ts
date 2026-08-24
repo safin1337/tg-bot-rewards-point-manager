@@ -94,6 +94,7 @@ beforeEach(async () => {
     env.DB.prepare("DELETE FROM leaderboard_periods"),
     env.DB.prepare("DELETE FROM transactions"),
     env.DB.prepare("DELETE FROM mutation_receipts"),
+    env.DB.prepare("DELETE FROM lifetime_redemption_snapshots"),
     env.DB.prepare("DELETE FROM customers")
   ]);
 });
@@ -255,6 +256,103 @@ describe("non-text message isolation", () => {
     expect((await context.states.get("123456789")).state).toEqual(before);
     expect(calls).toHaveLength(1);
     expect(String(calls[0]?.payload?.text)).toContain("non-text messages are not supported");
+  });
+});
+
+describe("informative dashboard and tools", () => {
+  it("shows combined business totals while excluding configured test accounts", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const normal = await context.customers.createZeroBalance(
+      normalizePhone("01700000011"),
+      34_000,
+      "2026-08-24T12:00:00.000Z"
+    );
+    const test = await context.customers.createZeroBalance(
+      normalizePhone("01700000012"),
+      34_001,
+      "2026-08-24T12:00:00.000Z"
+    );
+    await new RewardMutationService(env.DB).mutate({
+      customerId: normal.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 100_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 34_002,
+      expectedBalanceUnits: 0
+    });
+    await new RewardMutationService(env.DB).mutate({
+      customerId: test.customer.id,
+      type: "MANUAL_ADD",
+      pointUnits: 200_000,
+      purchaseAmountBdt: null,
+      note: null,
+      telegramUpdateId: 34_003,
+      expectedBalanceUnits: 0
+    });
+    await context.customers.changeTestAccountStatus(
+      test.customer.id,
+      false,
+      true,
+      "2026-08-24T12:01:00.000Z"
+    );
+
+    await processTelegramUpdate(context, message(34_100, 123456789, "/start"));
+    const text = String(calls.find((call) => call.method === "sendMessage")?.payload?.text);
+    expect(text).toContain("Registered customers: 1");
+    expect(text).toContain("Current customer points: 10.00 points");
+    expect(text).toContain("Estimated current reward value: BDT 3");
+    expect(text).toContain("Total redemptions: 0");
+  });
+
+  it("opens More Tools and completes a tokenized test-account classification", async () => {
+    const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
+    const created = await context.customers.createZeroBalance(
+      normalizePhone("01700000013"),
+      35_000,
+      "2026-08-24T13:00:00.000Z"
+    );
+    await processTelegramUpdate(context, callback(35_001, 123456789, "tools", 800));
+    expect(calls.find((call) => String(call.payload?.text).includes("More Tools")))
+      .toMatchObject({ method: "editMessageText", payload: { message_id: 800 } });
+
+    await processTelegramUpdate(context, callback(35_002, 123456789, "begin:T", 800));
+    let state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({
+      activeOperation: "MANAGE_TEST_ACCOUNT",
+      currentStep: "SELECT_MODE"
+    });
+    await processTelegramUpdate(
+      context,
+      callback(35_003, 123456789, `mode:f:${state?.payload.token ?? ""}`, 800)
+    );
+    await processTelegramUpdate(context, message(35_004, 123456789, "01700000013"));
+    state = (await context.states.get("123456789")).state;
+    expect(state).toMatchObject({
+      currentStep: "MANAGE_TEST_ACCOUNT",
+      selectedCustomerId: created.customer.id
+    });
+    expect(calls.find((call) => String(call.payload?.text).includes("Manage Test Account")))
+      .toBeDefined();
+
+    await processTelegramUpdate(
+      context,
+      callback(35_005, 123456789, `testchange:t:${state?.payload.token ?? ""}`, 801)
+    );
+    const confirmation = (await context.states.get("123456789")).state;
+    expect(confirmation).toMatchObject({
+      currentStep: "CONFIRM_TEST_ACCOUNT_CHANGE",
+      payload: { expectedIsTest: false }
+    });
+    expect(confirmation?.payload.token).not.toBe(state?.payload.token);
+    await processTelegramUpdate(
+      context,
+      callback(35_006, 123456789, `testconfirm:t:${confirmation?.payload.token ?? ""}`, 801)
+    );
+    expect((await context.customers.findById(created.customer.id))?.isTest).toBe(true);
+    expect((await context.states.get("123456789")).state).toBeNull();
+    expect(calls.find((call) => String(call.payload?.text).includes("Account type updated successfully")))
+      .toMatchObject({ method: "editMessageText", payload: { message_id: 801 } });
   });
 });
 

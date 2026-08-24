@@ -10,6 +10,7 @@ import {
   balanceMessage,
   createCustomerForOperationConfirmationMessage,
   customerInfoBlock,
+  dashboardMessage,
   earningEntryPromptMessage,
   fullNumberSearchPrompt,
   historyMessage,
@@ -46,6 +47,7 @@ const customer: Customer = {
   phoneLast5: "45678",
   pointBalanceUnits: 65_625,
   roundedRewardBdt: 2,
+  isTest: false,
   creationTelegramUpdateId: 1,
   latestMutationTelegramUpdateId: 100,
   createdAtUtc: "2026-07-29T09:30:00.000Z",
@@ -194,7 +196,8 @@ describe("required branded messages", () => {
     ["REDEEM", "🎁 <b>Redeem Points</b>"],
     ["BALANCE", "💰 <b>Check Balance</b>"],
     ["HISTORY", "📜 <b>Customer History</b>"],
-    ["MANAGE_CUSTOMER", "🪪 <b>Manage Customer Identities</b>"]
+    ["MANAGE_CUSTOMER", "🪪 <b>Manage Customer Identities</b>"],
+    ["MANAGE_TEST_ACCOUNT", "🧪 <b>Manage Test Accounts</b>"]
   ] as const)("identifies the %s operation on its customer-selection panel", (operation, heading) => {
     expect(selectionMessage(operation)).toBe(
       `🏆 <b>SoulShop Rewards Point System</b>\n\n${heading}\n\nSelect a customer:`
@@ -207,7 +210,8 @@ describe("required branded messages", () => {
     ["REDEEM", "🎁 Redeem Points"],
     ["BALANCE", "💰 Check Balance"],
     ["HISTORY", "📜 Customer History"],
-    ["MANAGE_CUSTOMER", "🪪 Manage Customer Identities"]
+    ["MANAGE_CUSTOMER", "🪪 Manage Customer Identities"],
+    ["MANAGE_TEST_ACCOUNT", "🧪 Manage Test Accounts"]
   ] as const)("identifies the selected %s operation on all identifier prompts", (operation, label) => {
     expect(suffixSearchPrompt(operation)).toBe(
       `Selected Operation: ${label}\n\n`
@@ -258,6 +262,34 @@ describe("required branded messages", () => {
       whatsappUsername: null,
       telegramUsername: null
     })).toThrow(/no identifier/i);
+  });
+
+  it("marks only test-account customer information", () => {
+    expect(customerInfoBlock({
+      whatsappNumber: "+8801712345678",
+      whatsappUsername: null,
+      telegramUsername: null,
+      isTest: true
+    })).toBe("🧪 Test Account\nCustomer Info:\nWhatsApp Number: +8801712345678");
+    expect(customerInfoBlock(customer)).not.toContain("Test Account");
+  });
+
+  it("renders combined dashboard totals and rounds reward BDT from each combined point total", () => {
+    expect(dashboardMessage({
+      customerCount: 12,
+      currentPointUnits: 123_456,
+      lifetimeRedemptionCount: 4,
+      lifetimeRedeemedPointUnits: 40_000
+    })).toContain(
+      "📊 <b>Business Overview</b>\n"
+      + "Registered customers: 12\n"
+      + "Current customer points: 12.35 points\n"
+      + "Estimated current reward value: BDT 3\n\n"
+      + "🎁 <b>Lifetime Redemptions</b>\n"
+      + "Total redemptions: 4\n"
+      + "Total redeemed points: 4.00 points\n"
+      + "Estimated redeemed value: BDT 1"
+    );
   });
 
   it("uses the full Customer Info block across customer-specific messages", () => {

@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.8 database design
+# Telegram Loyalty Rewards Point Manager V2.0.9 database design
 
 ## Sources of truth
 
@@ -65,6 +65,14 @@ lakh/crore grouping only when building Telegram messages. No poisha column,
 schema migration, stored-value rewrite, CSV rewrite, or historical
 recalculation is needed.
 
+V2.0.9 migration `0009_dashboard_and_test_accounts.sql` adds the constrained
+`customers.is_test` Boolean with default zero, creates the global
+`lifetime_redemption_snapshots` table and newest index, and widens the
+conversation operation constraint for test-account management. Existing
+customers, balances, identifiers, transactions, receipts, aggregates, and
+workflow rows are preserved. Disposable pre-release test redemptions are
+intentionally not backfilled, so the business lifetime total starts at zero.
+
 Two-decimal point formatting is a Telegram presentation rule only. It is
 calculated from integer point units with half-up rounding and is never stored
 back into D1. Parsing, balances, transaction deltas, leaderboard aggregates,
@@ -79,6 +87,7 @@ for leaderboard totals.
 | Data | Retention |
 |---|---|
 | `customers` | Unbounded |
+| `lifetime_redemption_snapshots` | Latest 40 cumulative snapshots globally; the newest row preserves the lifetime count and point-unit total |
 | `transactions` | Latest 40 per customer across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined |
 | completed `mutation_receipts` | The receipts corresponding to those retained latest 40 transactions per customer |
 | `leaderboard_reset_receipts` | Both within two UTC calendar months and within the latest 40 overall |
@@ -105,12 +114,20 @@ creation remains append-only, after which the same atomic D1 batch:
 2. conditionally updates the expected customer balance and mutation update-ID
    high-water mark;
 3. inserts the detailed transaction;
-4. updates applicable weekly/monthly aggregates;
-5. completes the mutation receipt;
-6. deletes transactions beyond position 40 and their matching completed
+4. updates applicable weekly/monthly aggregates for an eligible earning;
+5. records and prunes the cumulative lifetime snapshot for an eligible redemption;
+6. completes the mutation receipt;
+7. deletes transactions beyond position 40 and their matching completed
    receipts;
-7. prunes obsolete leaderboard periods; and
-8. runs a retention/integrity guard.
+8. prunes obsolete leaderboard periods; and
+9. runs retention/integrity guards.
+
+The lifetime snapshot insertion derives its next count and cumulative units
+from the newest row inside the same D1 batch. It never reconstructs a total
+from retained detailed transactions. After insertion, only the newest 40
+global snapshots remain, so the newest row is sufficient even after early
+cumulative rows are pruned. Batch rollback prevents a balance, transaction,
+receipt, or lifetime summary from committing alone.
 
 Before step 1, the application validates that purchase point units match the
 current configured earning policy. Telegram purchase confirmations also carry

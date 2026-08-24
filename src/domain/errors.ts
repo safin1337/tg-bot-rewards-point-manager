@@ -11,6 +11,7 @@ export class DomainError extends Error {
       | "IDENTIFIER_CONFLICT"
       | "IDENTIFIER_STALE"
       | "LAST_IDENTIFIER"
+      | "TEST_ACCOUNT_BALANCE"
       | "INSUFFICIENT_BALANCE"
       | "BALANCE_CONFLICT"
       | "DUPLICATE_UPDATE"

@@ -9,6 +9,8 @@ import {
   historyKeyboard,
   leaderboardMenuKeyboard,
   manageCustomerKeyboard,
+  manageTestAccountKeyboard,
+  dashboardKeyboard,
   redeemAmountKeyboard,
   resultsKeyboard,
   selectionKeyboard
@@ -20,6 +22,8 @@ import {
   historyMessage,
   leaderboardMenuMessage,
   manageCustomerMessage,
+  manageTestAccountMessage,
+  dashboardMessage,
   selectionMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
@@ -55,6 +59,7 @@ export const operationFromCode = (code: string): Operation | null => {
     case "E": return "EXPORT";
     case "L": return "LEADERBOARD";
     case "U": return "MANAGE_CUSTOMER";
+    case "T": return "MANAGE_TEST_ACCOUNT";
     default: return null;
   }
 };
@@ -113,6 +118,15 @@ export const startOperation = async (
   return state;
 };
 
+export const showDashboard = async (
+  context: WorkflowContext,
+  chatId: number,
+  target: ActiveMessageTarget | null = null
+): Promise<void> => {
+  const summary = await context.dashboard.summary();
+  await display(context, chatId, dashboardMessage(summary), dashboardKeyboard(), target);
+};
+
 export const promptAfterSelection = async (
   context: WorkflowContext,
   state: ConversationState,
@@ -134,6 +148,23 @@ export const promptAfterSelection = async (
       chatId,
       manageCustomerMessage(customer),
       manageCustomerKeyboard(customer, saved.payload.token),
+      target
+    );
+    return;
+  }
+  if (state.activeOperation === "MANAGE_TEST_ACCOUNT") {
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "MANAGE_TEST_ACCOUNT",
+      selectedCustomerId: customer.id,
+      searchPage: 0,
+      payload: { token: state.payload.token }
+    });
+    await display(
+      context,
+      chatId,
+      manageTestAccountMessage(customer),
+      manageTestAccountKeyboard(customer, saved.payload.token),
       target
     );
     return;

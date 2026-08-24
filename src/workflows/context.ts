@@ -7,6 +7,7 @@ import { StateRepository } from "../database/state-repository";
 import { TransactionRepository } from "../database/transaction-repository";
 import { ExportService } from "../exports/export-service";
 import { TelegramClient } from "../telegram/client";
+import { DashboardRepository } from "../database/dashboard-repository";
 
 export interface WorkflowContext {
   config: AppConfig;
@@ -19,6 +20,7 @@ export interface WorkflowContext {
   leaderboards: LeaderboardRepository;
   mutations: RewardMutationService;
   exports: ExportService;
+  dashboard: DashboardRepository;
 }
 
 export const makeWorkflowContext = (
@@ -35,5 +37,6 @@ export const makeWorkflowContext = (
   idempotency: new IdempotencyRepository(db),
   leaderboards: new LeaderboardRepository(db),
   mutations: new RewardMutationService(db),
-  exports: new ExportService(db, config.exportMaxRows, config.exportMaxBytes)
+  exports: new ExportService(db, config.exportMaxRows, config.exportMaxBytes),
+  dashboard: new DashboardRepository(db)
 });

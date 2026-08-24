@@ -10,6 +10,7 @@ export interface Customer {
   telegramUsername: string | null;
   pointBalanceUnits: number;
   roundedRewardBdt: number;
+  isTest: boolean;
   creationTelegramUpdateId: number | null;
   latestMutationTelegramUpdateId: number | null;
   createdAtUtc: string;
@@ -54,6 +55,13 @@ export interface LeaderboardEntry {
   firstQualifyingEarningAtUtc: string;
 }
 
+export interface DashboardSummary {
+  customerCount: number;
+  currentPointUnits: number;
+  lifetimeRedemptionCount: number;
+  lifetimeRedeemedPointUnits: number;
+}
+
 export type Operation =
   | "PURCHASE"
   | "MANUAL_ADD"
@@ -62,6 +70,7 @@ export type Operation =
   | "HISTORY"
   | "ADD_CUSTOMER"
   | "MANAGE_CUSTOMER"
+  | "MANAGE_TEST_ACCOUNT"
   | "EXPORT"
   | "LEADERBOARD";
 
@@ -85,6 +94,8 @@ export type WorkflowStep =
   | "AWAIT_IDENTITY_VALUE"
   | "CONFIRM_IDENTITY_CHANGE"
   | "CONFIRM_IDENTITY_REMOVE"
+  | "MANAGE_TEST_ACCOUNT"
+  | "CONFIRM_TEST_ACCOUNT_CHANGE"
   | "AWAIT_PURCHASE_AMOUNT"
   | "CONFIRM_PURCHASE"
   | "AWAIT_POINT_AMOUNT"
@@ -109,6 +120,7 @@ export interface StatePayload {
   pendingIdentifierType?: CustomerIdentifierType;
   pendingIdentifierValue?: string;
   expectedIdentifierValue?: string | null;
+  expectedIsTest?: boolean;
   leaderboardResetType?: LeaderboardPeriodType;
   leaderboardResetPeriodKey?: string;
 }

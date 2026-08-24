@@ -2,6 +2,61 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.9] - 2026-08-25
+
+### Informative business dashboard
+
+- Replaced the welcome-only `/start` panel with combined registered-customer,
+  current-point, estimated-current-BDT, lifetime-redemption-count,
+  lifetime-redeemed-point, and estimated-redeemed-BDT totals.
+- Counted each customer row once regardless of whether it has a WhatsApp
+  number, WhatsApp username, Telegram username, or several identifiers.
+- Continued calculating each estimated BDT total once from its combined exact
+  integer point-unit total instead of adding individually rounded values.
+
+### Test-account controls
+
+- Added persistent per-customer test-account classification and a tokenized
+  `Manage Test Accounts` workflow. Marking an account preserves its balance and
+  history, removes retained leaderboard aggregates when configured, and visibly
+  labels its customer-specific screens and CSV rows.
+- Added documented `APP_CONFIG.analytics.testAccounts` Boolean switches for
+  dashboard, leaderboard, and future lifetime-redemption exclusions. The
+  comments beside each switch explain both `true` and `false` behavior.
+- Required a test account to have exactly zero point units before conversion to
+  a normal customer account. Test accounts remain searchable and usable, so
+  `Redeem All Points` can safely reduce a test balance to zero first.
+- Started the new business lifetime-redemption counter at zero without
+  backfilling the existing disposable test redemptions. Classification changes
+  never delete or rewrite retained transaction history.
+
+### Cumulative redemption storage and navigation
+
+- Added migration `0009_dashboard_and_test_accounts.sql` and a global
+  cumulative lifetime-redemption snapshot table. Each eligible redemption is
+  recorded in the same atomic D1 batch as its balance, detailed transaction,
+  receipt, retention, and integrity guards.
+- Retained only the newest 40 cumulative snapshots globally; the newest row
+  remains the lifetime source of truth even after older snapshot rows are
+  pruned. Duplicate Telegram updates cannot increase the count twice.
+- Redesigned the main dashboard to keep purchase, balance, redemption,
+  leaderboard, history, customer creation, and one `More Tools` entry. The
+  secondary `/tools` menu now contains identity management, test-account
+  management, manual points, export, help, and Back to Dashboard.
+- Kept direct legacy slash commands functional while preparing a smaller
+  visible Telegram command list. Updating Telegram commands remains an explicit
+  administrator operation.
+
+### Compatibility and validation
+
+- Added `account_type` to both CSV exports without changing point precision,
+  timestamps, quoting, formula-injection protection, or size limits.
+- Added migration, arithmetic, cumulative-retention, duplicate, exclusion,
+  zero-balance conversion, menu, workflow, dashboard, message, and export
+  regression coverage.
+- No production migration, deployment, webhook update, command registration,
+  secret operation, commit, push, or tag was performed by this work.
+
 ## [2.0.8] - 2026-08-22
 
 ### Compact identity-aware leaderboards

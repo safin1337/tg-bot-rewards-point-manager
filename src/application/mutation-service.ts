@@ -11,6 +11,8 @@ import { CustomerRepository } from "../database/customer-repository";
 import { LeaderboardRepository } from "../database/leaderboard-repository";
 import { MutationReceiptRepository } from "../database/mutation-receipt-repository";
 import { TransactionRepository } from "../database/transaction-repository";
+import { RedemptionSummaryRepository } from "../database/redemption-summary-repository";
+import { APP_RUNTIME_CONFIG } from "../config/app-config";
 
 export interface MutationInput {
   customerId: number;
@@ -37,6 +39,7 @@ export class RewardMutationService {
   private readonly transactions: TransactionRepository;
   private readonly receipts: MutationReceiptRepository;
   private readonly leaderboards: LeaderboardRepository;
+  private readonly redemptionSummaries: RedemptionSummaryRepository;
 
   constructor(
     private readonly db: D1Database,
@@ -46,6 +49,7 @@ export class RewardMutationService {
     this.transactions = new TransactionRepository(db);
     this.receipts = new MutationReceiptRepository(db);
     this.leaderboards = new LeaderboardRepository(db, clock);
+    this.redemptionSummaries = new RedemptionSummaryRepository(db);
   }
 
   private async resultFromReceipt(updateId: number): Promise<MutationResult | null> {
@@ -109,8 +113,15 @@ export class RewardMutationService {
     const recordedAt = this.clock();
     const timestamp = recordedAt.toISOString();
     const earning = input.type === "PURCHASE" || input.type === "MANUAL_ADD";
-    const weeklyPeriodKey = earning ? leaderboardPeriodKey("WEEK", recordedAt) : null;
-    const monthlyPeriodKey = earning ? leaderboardPeriodKey("MONTH", recordedAt) : null;
+    const leaderboardEarning = earning && !(
+      customer.isTest && APP_RUNTIME_CONFIG.analytics.testAccounts.excludeFromLeaderboards
+    );
+    const lifetimeRedemption = input.type === "REDEEM" && !(
+      customer.isTest
+      && APP_RUNTIME_CONFIG.analytics.testAccounts.excludeFromLifetimeRedemptions
+    );
+    const weeklyPeriodKey = leaderboardEarning ? leaderboardPeriodKey("WEEK", recordedAt) : null;
+    const monthlyPeriodKey = leaderboardEarning ? leaderboardPeriodKey("MONTH", recordedAt) : null;
     const receiptValues = {
       telegramUpdateId: input.telegramUpdateId,
       customerId: customer.id,
@@ -150,9 +161,20 @@ export class RewardMutationService {
         createdAtUtc: timestamp
       })
     ];
-    if (earning) {
+    if (leaderboardEarning) {
       statements.push(
         ...this.leaderboards.earningStatements(customer.id, input.pointUnits, timestamp)
+      );
+    }
+    if (lifetimeRedemption) {
+      statements.push(
+        this.redemptionSummaries.recordStatement(
+          input.telegramUpdateId,
+          input.pointUnits,
+          timestamp
+        ),
+        this.redemptionSummaries.pruneStatement(),
+        this.redemptionSummaries.guardStatement(input.telegramUpdateId, input.pointUnits)
       );
     }
     statements.push(

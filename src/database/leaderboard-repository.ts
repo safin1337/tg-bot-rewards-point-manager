@@ -7,6 +7,7 @@ import {
 import type { LeaderboardEntry, LeaderboardPeriodType } from "../types/models";
 import { subtractUtcCalendarMonthsClamped } from "../utils/time";
 import { mapLeaderboardEntry } from "./validation";
+import { APP_RUNTIME_CONFIG } from "../config/app-config";
 
 export interface LeaderboardResetResult {
   duplicate: boolean;
@@ -168,13 +169,18 @@ export class LeaderboardRepository {
           AND aggregate_row.generation = period.current_generation
          JOIN customers AS customer ON customer.id = aggregate_row.customer_id
          WHERE period.period_type = ? AND period.period_key = ?
+           AND (? = 0 OR customer.is_test = 0)
          ORDER BY
            aggregate_row.earned_point_units DESC,
            aggregate_row.first_qualifying_earning_at_utc ASC,
            aggregate_row.customer_id ASC
          LIMIT 10`
       )
-      .bind(period.type, period.key)
+      .bind(
+        period.type,
+        period.key,
+        APP_RUNTIME_CONFIG.analytics.testAccounts.excludeFromLeaderboards ? 1 : 0
+      )
       .all();
     return result.results.map(mapLeaderboardEntry);
   }

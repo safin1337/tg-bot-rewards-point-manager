@@ -73,6 +73,7 @@ Cloudflare Worker (TypeScript)
         +-- D1 conversation state and bounded operational receipts
         +-- D1 authoritative customer balances
         +-- D1 newest-40 detailed transactions
+        +-- D1 newest-40 cumulative lifetime-redemption snapshots
         +-- D1 weekly/monthly leaderboard aggregates and reset generations
         |
         v
@@ -120,6 +121,9 @@ The source is split into domain calculations, validated D1 repositories, atomic 
   underlying exact amount.
 - Detailed history retains the newest 40 rows per customer across all three transaction types combined. The deterministic order is `created_at_utc DESC, id DESC`.
 - Completed mutation receipts correspond to retained detail rows; a per-customer update-ID high-water mark rejects delayed updates after their bounded receipts are pruned.
+- The dashboard combines included balances into exact point-unit totals and
+  calculates estimated BDT values once. Lifetime redemptions use the newest of
+  40 globally retained cumulative snapshots.
 
 ## Customer identity rules
 
@@ -146,6 +150,23 @@ The source is split into domain calculations, validated D1 repositories, atomic 
   to the exact current value so a concurrent change cannot be overwritten.
 - Identity changes do not create reward transactions or change balances,
   history, receipts, or leaderboard totals.
+
+## Dashboard and test accounts
+
+- `/start` shows the included registered-customer count, combined current
+  points and estimated BDT, lifetime redemption count, combined redeemed
+  points, and estimated redeemed BDT.
+- One D1 customer is counted once even when it has several identifiers.
+- `More Tools` opens identity management, test-account management, manual point
+  additions, export, and help. `/tools` opens the same secondary menu.
+- Test accounts remain searchable and retain balances and history. By default,
+  configuration excludes them from dashboard totals, leaderboards, and future
+  lifetime redemption totals.
+- Marking an account test removes its retained leaderboard aggregates when the
+  exclusion is enabled. Converting it back requires an exact zero balance; use
+  the normal `Redeem All Points` confirmation first when needed.
+- V2.0.9 intentionally starts the business lifetime counter at zero. Existing
+  disposable test redemption history is retained and not backfilled.
 
 Example:
 
@@ -216,6 +237,7 @@ prompts continue to use one primary identifier.
 | `/history` | View newest-first reward history |
 | `/addcustomer` | Register a zero-point customer |
 | `/managecustomer` | Add, change, or remove a customer's current identifiers |
+| `/tools` | Open the secondary administrator tools menu |
 | `/export` | Export customers and/or transactions |
 | `/leaderboard` | View weekly/monthly rankings or reset the current period |
 | `/restart` | Restart the active workflow |
@@ -284,7 +306,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.8 release guide](docs/V2.0.8-RELEASE.md).
+[V2.0.9 release guide](docs/V2.0.9-RELEASE.md).
 
 ## Security summary
 
@@ -293,7 +315,7 @@ operators preparing this release should also use the
 - Telegram updates are classified as text, callback, non-text, ignored, or
   malformed before application routing. Callback values, D1 rows, state JSON,
   point inputs, and phones are validated.
-- Balance, detailed transaction, applicable leaderboard totals, completed receipt, paired pruning, and the mutation high-water mark are one atomic D1 batch guarded by the expected balance.
+- Balance, detailed transaction, applicable leaderboard and lifetime-redemption totals, completed receipt, paired pruning, and the mutation high-water mark are one atomic D1 batch guarded by the expected balance.
 - Retained receipts reject duplicate Telegram updates; the per-customer high-water mark rejects older updates after receipt pruning.
 - Callback panels are edited in place where chronologically safe; a failed edit falls back to one new message without changing the committed business result.
 - Notes and dynamic values are HTML escaped.

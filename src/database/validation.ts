@@ -67,6 +67,12 @@ const nonnegativeIntegerField = (row: Row, key: string): number => {
   return value;
 };
 
+const booleanIntegerField = (row: Row, key: string): boolean => {
+  const value = integerField(row, key);
+  if (value !== 0 && value !== 1) throw new Error("Invalid database result.");
+  return value === 1;
+};
+
 const positiveIntegerField = (row: Row, key: string): number => {
   const value = integerField(row, key);
   if (value <= 0) throw new Error("Invalid database result.");
@@ -104,7 +110,7 @@ const nullableUsernameField = (
 
 const OPERATIONS: readonly Operation[] = [
   "PURCHASE", "MANUAL_ADD", "REDEEM", "BALANCE", "HISTORY", "ADD_CUSTOMER", "EXPORT",
-  "LEADERBOARD", "MANAGE_CUSTOMER"
+  "LEADERBOARD", "MANAGE_CUSTOMER", "MANAGE_TEST_ACCOUNT"
 ];
 const STEPS: readonly WorkflowStep[] = [
   "SELECT_MODE", "AWAIT_SEARCH", "SHOW_RESULTS", "AWAIT_FULL_NUMBER",
@@ -114,7 +120,8 @@ const STEPS: readonly WorkflowStep[] = [
   "LEADERBOARD_MENU", "LEADERBOARD_WEEKLY", "LEADERBOARD_MONTHLY",
   "CONFIRM_LEADERBOARD_RESET", "SELECT_ADD_CUSTOMER_IDENTITY",
   "AWAIT_ADD_CUSTOMER_IDENTITY", "MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE",
-  "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE"
+  "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE", "MANAGE_TEST_ACCOUNT",
+  "CONFIRM_TEST_ACCOUNT_CHANGE"
 ];
 const TRANSACTION_TYPES: readonly TransactionType[] = ["PURCHASE", "MANUAL_ADD", "REDEEM"];
 const LEADERBOARD_PERIOD_TYPES: readonly LeaderboardPeriodType[] = ["WEEK", "MONTH"];
@@ -206,6 +213,12 @@ const parsePayload = (json: string): StatePayload => {
     }
     payload.expectedIdentifierValue = row.expectedIdentifierValue;
   }
+  if (row.expectedIsTest !== undefined) {
+    if (typeof row.expectedIsTest !== "boolean") {
+      throw new Error("Invalid conversation state.");
+    }
+    payload.expectedIsTest = row.expectedIsTest;
+  }
   if (row.leaderboardResetType !== undefined) {
     if (
       typeof row.leaderboardResetType !== "string"
@@ -264,6 +277,7 @@ export const mapCustomer = (value: unknown): Customer => {
     telegramUsername,
     pointBalanceUnits: nonnegativeIntegerField(row, "point_balance_units"),
     roundedRewardBdt: nonnegativeIntegerField(row, "rounded_reward_bdt"),
+    isTest: booleanIntegerField(row, "is_test"),
     creationTelegramUpdateId: nullableNonnegativeIntegerField(row, "creation_telegram_update_id"),
     latestMutationTelegramUpdateId: nullableNonnegativeIntegerField(
       row,

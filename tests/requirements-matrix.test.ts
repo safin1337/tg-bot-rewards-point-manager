@@ -4,6 +4,7 @@ import {
   backCancelKeyboard,
   confirmKeyboard,
   dashboardKeyboard,
+  toolsKeyboard,
   redeemAmountKeyboard,
   selectionKeyboard
 } from "../src/telegram/keyboards";
@@ -23,7 +24,8 @@ describe("registered command routing", () => {
     "leaderboard",
     "restart",
     "cancel",
-    "help"
+    "help",
+    "tools"
   ])("extracts /%s including bot-addressed variants", (command) => {
     expect(extractCommand(`/${command}`)).toBe(command);
     expect(extractCommand(`/${command}@SoulShopRewardsBot argument`)).toBe(command);
@@ -92,15 +94,24 @@ describe("Telegram callback size and dashboard actions", () => {
 
   it.each([
     "🛍️ Record Purchase",
-    "➕ Add Points Manually",
     "🎁 Redeem Points",
     "💰 Check Balance",
     "📜 Customer History",
     "👤 Add New Customer",
-    "📤 Export Data",
     "🏅 Leaderboard",
-    "ℹ️ Help"
+    "⚙️ More Tools"
   ])("shows dashboard action %s", (label) => {
     expect(dashboardKeyboard().inline_keyboard.flat().map((button) => button.text)).toContain(label);
+  });
+
+  it.each([
+    "🪪 Manage Customer Identities",
+    "🧪 Manage Test Accounts",
+    "➕ Add Points Manually",
+    "📤 Export Data",
+    "ℹ️ Help",
+    "⬅️ Back to Dashboard"
+  ])("shows tools action %s", (label) => {
+    expect(toolsKeyboard().inline_keyboard.flat().map((button) => button.text)).toContain(label);
   });
 });

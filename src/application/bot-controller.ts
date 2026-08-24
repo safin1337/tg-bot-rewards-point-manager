@@ -2,15 +2,14 @@ import type { TelegramUpdate } from "../telegram/types";
 import {
   BRAND,
   BRAND_NAME_HTML,
-  dashboardMessage,
   unsupportedNonTextMessage
 } from "../telegram/messages";
-import { dashboardKeyboard } from "../telegram/keyboards";
 import { handleCallback } from "../workflows/callback-handler";
 import { extractCommand, handleCommand } from "../workflows/command-handler";
 import type { WorkflowContext } from "../workflows/context";
 import { handleStateMessage } from "../workflows/message-handler";
 import { editOrSendFallback } from "../telegram/active-message";
+import { showDashboard } from "../workflows/common";
 
 const unauthorizedMessage = `${BRAND}\n\n⛔ This private bot is restricted to the authorized ${BRAND_NAME_HTML} administrator.`;
 const oldUpdateMessage = `${BRAND}\n\n⚠️ An older Telegram update was ignored so it cannot continue or replace the current operation.`;
@@ -89,13 +88,13 @@ export const processTelegramUpdate = async (
   }
 
   if (current.state === null) {
-    await context.telegram.sendMessage(
-      chatId,
-      current.expired
-        ? `${BRAND}\n\n⏱️ The previous operation expired. Please start again.`
-        : dashboardMessage(),
-      { replyMarkup: dashboardKeyboard() }
-    );
+    if (current.expired) {
+      await context.telegram.sendMessage(
+        chatId,
+        `${BRAND}\n\n⏱️ The previous operation expired. Please start again.`
+      );
+    }
+    await showDashboard(context, chatId);
     return;
   }
   await handleStateMessage(context, current.state, chatId, update.message.text);

@@ -23,14 +23,18 @@ import {
   leaderboardResultKeyboard,
   identityRemoveConfirmKeyboard,
   manageCustomerKeyboard,
+  manageTestAccountKeyboard,
+  testAccountConfirmKeyboard,
   selectionKeyboard,
-  skipNoteKeyboard
+  skipNoteKeyboard,
+  toolsKeyboard
 } from "../telegram/keyboards";
 import {
   BRAND,
   BRAND_NAME_HTML,
   addCustomerSuccessMessage,
   fullNumberSearchPrompt,
+  dashboardMessage,
   helpMessage,
   leaderboardMenuMessage,
   leaderboardMessage,
@@ -40,11 +44,15 @@ import {
   identifierInputPromptText,
   identityRemoveConfirmationMessage,
   manageCustomerMessage,
+  manageTestAccountMessage,
   manualAddSuccessMessage,
   purchaseSuccessMessage,
   redemptionSuccessMessage,
   selectionMessage,
   suffixSearchPrompt,
+  testAccountChangeSuccessMessage,
+  testAccountConfirmationMessage,
+  toolsMenuMessage,
   usernameSearchPrompt
 } from "../telegram/messages";
 import type { ConversationState, LeaderboardPeriodType } from "../types/models";
@@ -57,6 +65,7 @@ import {
   promptAfterSelection,
   showHistory,
   showSearchResults,
+  showDashboard,
   startOperation
 } from "./common";
 import type { WorkflowContext } from "./context";
@@ -300,21 +309,33 @@ export const handleCallback = async (
 ): Promise<void> => {
   const target: ActiveMessageTarget = { chatId, messageId };
   if (data === "help") {
-    await display(context, target, helpMessage());
+    await display(context, target, helpMessage(), toolsKeyboard());
+    return;
+  }
+  if (data === "tools") {
+    await context.states.clear(adminId);
+    await display(context, target, toolsMenuMessage(), toolsKeyboard());
+    return;
+  }
+  if (data === "dashboard") {
+    await context.states.clear(adminId);
+    await showDashboard(context, chatId, target);
     return;
   }
   if (data === "cancel") {
     await context.states.clear(adminId);
+    const summary = await context.dashboard.summary();
+    const dashboard = dashboardMessage(summary).replace(`${BRAND}\n\n`, "");
     await display(
       context,
       target,
-      `${BRAND}\n\n✅ The current operation was cancelled.\n\nWelcome to the ${BRAND_NAME_HTML} rewards management dashboard.`,
+      `${BRAND}\n\n✅ The current operation was cancelled.\n\n${dashboard}`,
       dashboardKeyboard()
     );
     return;
   }
 
-  let match = /^begin:([PMRBAHELU])$/.exec(data);
+  let match = /^begin:([PMRBAHELUT])$/.exec(data);
   if (match?.[1] !== undefined) {
     const operation = operationFromCode(match[1]);
     if (operation === null) return stale(context, target);
@@ -462,6 +483,138 @@ export const handleCallback = async (
     return;
   }
 
+  match = /^testchange:([tc]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const nextIsTest = match[1] === "t";
+    if (
+      state === null
+      || state.activeOperation !== "MANAGE_TEST_ACCOUNT"
+      || state.currentStep !== "MANAGE_TEST_ACCOUNT"
+      || state.selectedCustomerId === null
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null || customer.isTest === nextIsTest) {
+      await stale(context, target);
+      return;
+    }
+    if (!nextIsTest && customer.pointBalanceUnits !== 0) {
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n⚠️ Redeem all remaining points before converting this test account.\n\n${manageTestAccountMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        manageTestAccountKeyboard(customer, state.payload.token)
+      );
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "CONFIRM_TEST_ACCOUNT_CHANGE",
+      payload: {
+        token: newStateToken(),
+        expectedIsTest: customer.isTest
+      }
+    });
+    await display(
+      context,
+      target,
+      testAccountConfirmationMessage(customer, nextIsTest),
+      testAccountConfirmKeyboard(nextIsTest, saved.payload.token)
+    );
+    return;
+  }
+
+  match = /^testback:([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[1]);
+    if (
+      state === null
+      || state.activeOperation !== "MANAGE_TEST_ACCOUNT"
+      || state.currentStep !== "CONFIRM_TEST_ACCOUNT_CHANGE"
+      || state.selectedCustomerId === null
+    ) {
+      await stale(context, target);
+      return;
+    }
+    const customer = await context.customers.findById(state.selectedCustomerId);
+    if (customer === null) {
+      await stale(context, target);
+      return;
+    }
+    const saved = await context.states.save({
+      ...state,
+      currentStep: "MANAGE_TEST_ACCOUNT",
+      payload: { token: newStateToken() }
+    });
+    await display(
+      context,
+      target,
+      manageTestAccountMessage(customer),
+      manageTestAccountKeyboard(customer, saved.payload.token)
+    );
+    return;
+  }
+
+  match = /^testconfirm:([tc]):([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined && match[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2]);
+    const nextIsTest = match[1] === "t";
+    if (
+      state === null
+      || state.activeOperation !== "MANAGE_TEST_ACCOUNT"
+      || state.currentStep !== "CONFIRM_TEST_ACCOUNT_CHANGE"
+      || state.selectedCustomerId === null
+      || state.payload.expectedIsTest === undefined
+      || state.payload.expectedIsTest === nextIsTest
+    ) {
+      await stale(context, target);
+      return;
+    }
+    try {
+      const result = await context.customers.changeTestAccountStatus(
+        state.selectedCustomerId,
+        state.payload.expectedIsTest,
+        nextIsTest,
+        new Date().toISOString()
+      );
+      await display(
+        context,
+        target,
+        testAccountChangeSuccessMessage(result.customer, result.duplicate),
+        toolsKeyboard()
+      );
+      await context.states.clear(adminId);
+    } catch (error: unknown) {
+      if (!(error instanceof DomainError) || ![
+        "IDENTIFIER_STALE",
+        "TEST_ACCOUNT_BALANCE"
+      ].includes(error.code)) {
+        throw error;
+      }
+      const customer = await context.customers.findById(state.selectedCustomerId);
+      if (customer === null) {
+        await context.states.clear(adminId);
+        await showDashboard(context, chatId, target);
+        return;
+      }
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "MANAGE_TEST_ACCOUNT",
+        payload: { token: newStateToken() }
+      });
+      await display(
+        context,
+        target,
+        `${BRAND}\n\n⚠️ ${escapeHtml(error.message)}\n\n${manageTestAccountMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        manageTestAccountKeyboard(customer, saved.payload.token)
+      );
+    }
+    return;
+  }
+
   match = /^back:([sfanuic]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const destination = match[1];
@@ -480,7 +633,9 @@ export const handleCallback = async (
         "MANAGE_CUSTOMER",
         "AWAIT_IDENTITY_VALUE",
         "CONFIRM_IDENTITY_CHANGE",
-        "CONFIRM_IDENTITY_REMOVE"
+        "CONFIRM_IDENTITY_REMOVE",
+        "MANAGE_TEST_ACCOUNT",
+        "CONFIRM_TEST_ACCOUNT_CHANGE"
       ];
       if (
         !allowedSteps.includes(state.currentStep)

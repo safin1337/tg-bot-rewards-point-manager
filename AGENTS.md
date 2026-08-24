@@ -104,11 +104,23 @@ These rules are mandatory for every future coding agent working in this reposito
 
 - `/addcustomer` and newly created purchase/manual-add customers start with exactly zero point units and zero rounded reward BDT.
 - Zero-point customer creation never creates a reward transaction.
-- Preserve the atomic invariant: the update-ID claim, customer balance update, transaction insertion, applicable leaderboard increments, completed mutation receipt, and required retention pruning all succeed or all fail.
+- Preserve the atomic invariant: the update-ID claim, customer balance update,
+  transaction insertion, applicable leaderboard increments, applicable
+  lifetime-redemption snapshot, completed mutation receipt, and required
+  retention pruning all succeed or all fail.
 - Use conditional expected-balance updates and a database-level nonnegative condition.
 - Keep detailed transaction insertion append-only during normal mutation creation. Controlled retention pruning atomically removes rows beyond the newest 40 per customer and their corresponding completed mutation receipts.
 - Never manually delete retained transaction rows without deleting their corresponding completed mutation receipts in the same reviewed D1 batch.
 - The newest-40 limit applies across `PURCHASE`, `MANUAL_ADD`, and `REDEEM` combined. Customer balances and leaderboard aggregates must never depend on retained detailed rows.
+- Retain only the newest 40 cumulative lifetime-redemption snapshots globally.
+  The newest row is the lifetime count and redeemed-point source of truth;
+  never reconstruct it from retained detailed transactions or sum individually
+  rounded reward BDT values.
+- Test-account membership belongs in `customers.is_test`; never hardcode
+  customer identifiers in `APP_CONFIG`. Preserve test balances and history.
+  Under the default switches, exclude test accounts from dashboard totals,
+  leaderboards, and future lifetime-redemption snapshots. Conversion to normal
+  requires an exact zero point-unit balance and never backfills test activity.
 - Record Purchase and Add Points amount-entry prompts show the newest retained
   `PURCHASE` or `MANUAL_ADD`, ordered by `created_at_utc DESC, id DESC`, while
   skipping `REDEEM`. Show the purchase amount for purchases, show the escaped

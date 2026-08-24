@@ -7,22 +7,28 @@ export const dashboardKeyboard = (): InlineKeyboardMarkup => ({
   inline_keyboard: [
     [
       { text: "🛍️ Record Purchase", callback_data: "begin:P" },
-      { text: "➕ Add Points Manually", callback_data: "begin:M" }
+      { text: "💰 Check Balance", callback_data: "begin:B" }
     ],
     [
       { text: "🎁 Redeem Points", callback_data: "begin:R" },
-      { text: "💰 Check Balance", callback_data: "begin:B" }
+      { text: "🏅 Leaderboard", callback_data: "begin:L" }
     ],
     [
       { text: "📜 Customer History", callback_data: "begin:H" },
       { text: "👤 Add New Customer", callback_data: "begin:A" }
     ],
+    [{ text: "⚙️ More Tools", callback_data: "tools" }]
+  ]
+});
+
+export const toolsKeyboard = (): InlineKeyboardMarkup => ({
+  inline_keyboard: [
     [{ text: "🪪 Manage Customer Identities", callback_data: "begin:U" }],
-    [
-      { text: "🏅 Leaderboard", callback_data: "begin:L" },
-      { text: "📤 Export Data", callback_data: "begin:E" }
-    ],
-    [{ text: "ℹ️ Help", callback_data: "help" }]
+    [{ text: "🧪 Manage Test Accounts", callback_data: "begin:T" }],
+    [{ text: "➕ Add Points Manually", callback_data: "begin:M" }],
+    [{ text: "📤 Export Data", callback_data: "begin:E" }],
+    [{ text: "ℹ️ Help", callback_data: "help" }],
+    [{ text: "⬅️ Back to Dashboard", callback_data: "dashboard" }]
   ]
 });
 
@@ -228,6 +234,34 @@ export const identityRemoveConfirmKeyboard = (token: string): InlineKeyboardMark
   inline_keyboard: [
     [{ text: "✅ Confirm Removal", callback_data: `idremoveconfirm:${token}` }],
     [backButton(token, "i", "⬅️ Back to Identity Management")],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const manageTestAccountKeyboard = (
+  customer: Customer,
+  token: string
+): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{
+      text: customer.isTest ? "👤 Convert to Customer Account" : "🧪 Mark as Test Account",
+      callback_data: `testchange:${customer.isTest ? "c" : "t"}:${token}`
+    }],
+    [backButton(token, "s", "⬅️ Back to Customer Search")],
+    [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const testAccountConfirmKeyboard = (
+  nextIsTest: boolean,
+  token: string
+): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{
+      text: nextIsTest ? "✅ Mark as Test Account" : "✅ Convert to Customer Account",
+      callback_data: `testconfirm:${nextIsTest ? "t" : "c"}:${token}`
+    }],
+    [{ text: "⬅️ Back to Test Account", callback_data: `testback:${token}` }],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
   ]
 });

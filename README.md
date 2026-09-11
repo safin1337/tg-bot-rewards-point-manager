@@ -4,6 +4,8 @@ A production-ready Telegram bot for managing customer loyalty and reward points
 for a business. It allows an authorized administrator to register customers,
 record purchases, manually add points, redeem points, check balances, review
 transaction history, view leaderboards, and export operational data.
+For rush periods, `/quickbuy` records a strictly validated two-line WhatsApp
+number and whole-BDT purchase without a separate confirmation screen.
 Each customer may be found by a WhatsApp phone, WhatsApp username, or Telegram
 username without changing the immutable D1 customer ID that owns reward data.
 
@@ -159,6 +161,7 @@ The source is split into domain calculations, validated D1 repositories, atomic 
 - One D1 customer is counted once even when it has several identifiers.
 - `More Tools` opens identity management, test-account management, manual point
   additions, export, and help. `/tools` opens the same secondary menu.
+- `/testaccounts` opens test-account management directly.
 - Test accounts remain searchable and retain balances and history. By default,
   configuration excludes them from dashboard totals, leaderboards, and future
   lifetime redemption totals.
@@ -231,18 +234,46 @@ prompts continue to use one primary identifier.
 |---|---|
 | `/start` | Open the dashboard |
 | `/purchase` | Record a purchase |
+| `/quickbuy` | Immediately record a strict two-line WhatsApp-number purchase |
 | `/addpoints` | Add fractional points manually |
 | `/redeem` | Redeem a typed fractional amount or the exact full balance |
 | `/balance` | Check the latest balance |
 | `/history` | View newest-first reward history |
 | `/addcustomer` | Register a zero-point customer |
 | `/managecustomer` | Add, change, or remove a customer's current identifiers |
+| `/testaccounts` | Manage test-account classification directly |
 | `/tools` | Open the secondary administrator tools menu |
 | `/export` | Export customers and/or transactions |
 | `/leaderboard` | View weekly/monthly rankings or reset the current period |
 | `/restart` | Restart the active workflow |
 | `/cancel` | Cancel the active workflow |
 | `/help` | Show bot instructions |
+
+Telegram's visible suggestion menu intentionally contains only `/start`,
+`/purchase`, `/quickbuy`, `/redeem`, `/testaccounts`, `/tools`, `/restart`, and
+`/cancel`. Every command in the table remains valid when typed manually and
+remains documented by `/help`.
+
+### Quick Buy input
+
+After `/quickbuy`, send exactly two non-empty lines:
+
+```text
+017776-22294
+2950
+```
+
+The first line must be a complete WhatsApp number accepted by the shared phone
+normalizer; spaces and supported hyphens are allowed. The second line must
+contain only digits and represent a positive whole-number BDT amount. Usernames,
+phone suffixes, decimal points, commas, signs, letters, blank lines, and extra
+lines are rejected before any customer or reward write.
+
+An exact normalized phone match receives the purchase. If none exists, Quick
+Buy creates a normal phone-only customer at zero points and immediately records
+the purchase through the same atomic reward-mutation path. It never guesses
+that a username-only customer is the same person and never merges accounts.
+`/restart` returns to the Quick Buy input step; `/cancel` exits it.
 
 Inline-button navigation uses one active bot message where chronological order
 allows it. Confirmation panels become success results after commit, while
@@ -306,7 +337,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.9 release guide](docs/V2.0.9-RELEASE.md).
+[V2.0.10 release guide](docs/V2.0.10-RELEASE.md).
 
 ## Security summary
 

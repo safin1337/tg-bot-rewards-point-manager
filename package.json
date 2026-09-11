@@ -1,6 +1,6 @@
 {
   "name": "soulshop-rewards-point-system",
-  "version": "2.0.9",
+  "version": "2.0.10",
   "private": true,
   "type": "module",
   "description": "Administrator-only Telegram loyalty bot on Cloudflare Workers and D1",
@@ -32,6 +32,6 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.0",
-    "wrangler": "^4.123.0"
+    "wrangler": "^4.131.1"
   }
 }

@@ -1,17 +1,28 @@
+import { readFile } from "node:fs/promises";
 import { botToken, telegramCall } from "./telegram-api.mjs";
 
-const commands = [
-  { command: "start", description: "Open the rewards dashboard" },
-  { command: "purchase", description: "Record a customer purchase" },
-  { command: "balance", description: "Check customer reward balance" },
-  { command: "redeem", description: "Redeem customer points" },
-  { command: "leaderboard", description: "View or reset reward leaderboards" },
-  { command: "history", description: "View customer reward history" },
-  { command: "addcustomer", description: "Register a customer with zero points" },
-  { command: "tools", description: "Open administrator tools" },
-  { command: "restart", description: "Restart the current operation" },
-  { command: "cancel", description: "Cancel the current operation" }
-];
+const parsedCommands = JSON.parse(await readFile(
+  new URL("./telegram-commands.json", import.meta.url),
+  "utf8"
+));
 
-await telegramCall(botToken(), "setMyCommands", { commands });
+if (
+  !Array.isArray(parsedCommands)
+  || parsedCommands.length === 0
+  || parsedCommands.some((entry) => (
+    typeof entry !== "object"
+    || entry === null
+    || Array.isArray(entry)
+    || typeof entry.command !== "string"
+    || !/^[a-z0-9_]{1,32}$/.test(entry.command)
+    || typeof entry.description !== "string"
+    || entry.description.length < 1
+    || entry.description.length > 256
+  ))
+  || new Set(parsedCommands.map((entry) => entry.command)).size !== parsedCommands.length
+) {
+  throw new Error("scripts/telegram-commands.json contains an invalid Telegram command list.");
+}
+
+await telegramCall(botToken(), "setMyCommands", { commands: parsedCommands });
 console.log("Telegram commands registered.");

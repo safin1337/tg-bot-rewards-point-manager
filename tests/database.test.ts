@@ -885,6 +885,34 @@ describe("D1 conversation state", () => {
     });
     expect((await repository.get("123")).state?.payload.earningPolicyId).toBe(policyId);
   });
+
+  it("does not let an older operation replace a newer operation", async () => {
+    const repository = new StateRepository(env.DB, 30);
+    const newer = await repository.start("123", "REDEEM", "SELECT_MODE", 500);
+
+    await expect(repository.start("123", "PURCHASE", "SELECT_MODE", 499))
+      .rejects.toThrow(/newer workflow operation/i);
+
+    expect((await repository.get("123")).state).toEqual(newer);
+  });
+
+  it("conditionally rejects stale state saves without overwriting the winner", async () => {
+    const repository = new StateRepository(env.DB, 30);
+    const initial = await repository.start("123", "PURCHASE", "SELECT_MODE", 600);
+    const winner = await repository.save({
+      ...initial,
+      currentStep: "AWAIT_SEARCH",
+      selectionMode: "PHONE_SUFFIX"
+    });
+
+    await expect(repository.save({
+      ...initial,
+      currentStep: "AWAIT_FULL_NUMBER",
+      selectionMode: "PHONE_FULL"
+    })).rejects.toThrow(/state changed/i);
+
+    expect((await repository.get("123")).state).toEqual(winner);
+  });
 });
 
 describe("export delivery idempotency", () => {

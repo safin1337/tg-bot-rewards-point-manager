@@ -99,11 +99,36 @@ These rules are mandatory for every future coding agent working in this reposito
   customer ID. It must prepare the normal confirmation with that same value as
   `expectedBalanceUnits`; never derive a full redemption from rounded display
   text or bypass confirmation.
+- `/quickbuy` accepts exactly two non-empty lines: a complete WhatsApp phone
+  accepted by the shared phone utility, then a positive whole-number BDT amount
+  containing digits only. It never accepts suffixes, WhatsApp usernames, or
+  Telegram usernames and never infers or merges a username-only customer.
+- Validate the entire Quick Buy input and calculate its point units before any
+  customer lookup, customer creation, or reward write. Invalid input stays at
+  `AWAIT_QUICK_PURCHASE` and must use this exact response:
+
+  ```text
+  ⚠️ Invalid input.
+  Send the WhatsApp number on first line and
+  purchase amount on the next line.
+
+  No customer was created and no points were assigned.
+  ```
 
 ## Data and workflow invariants
 
 - `/addcustomer` and newly created purchase/manual-add customers start with exactly zero point units and zero rounded reward BDT.
 - Zero-point customer creation never creates a reward transaction.
+- When Quick Buy has no exact normalized phone match, create one normal,
+  phone-only customer at zero point units and then use the normal purchase
+  mutation pipeline. Quick Buy intentionally omits confirmation, but it must
+  retain every validation, earning-policy, expected-balance, idempotency,
+  leaderboard, retention, and atomic mutation guarantee.
+- Keep Quick Buy state until its final purchase receipt is delivered. A retry
+  after commit must reuse the completed mutation receipt and never assign
+  points twice. An interruption between customer creation and mutation may
+  leave the valid zero-balance customer for an idempotent retry; do not delete
+  or merge it automatically.
 - Preserve the atomic invariant: the update-ID claim, customer balance update,
   transaction insertion, applicable leaderboard increments, applicable
   lifetime-redemption snapshot, completed mutation receipt, and required
@@ -146,6 +171,16 @@ These rules are mandatory for every future coding agent working in this reposito
   rotates the state token, and never bypasses confirmation or performs a data
   mutation. Cancel remains the dashboard exit.
 - Answer every callback promptly, including unauthorized callbacks.
+- Start authorized callback acknowledgement concurrently with routing, but
+  always await the complete routing path. An acknowledgement failure must not
+  abandon, repeat, or misreport an in-flight workflow or mutation, and logs
+  must contain no callback data or customer identifiers.
+- Reuse one validated conversation-state read for ordinary callback navigation.
+  Refresh state immediately before confirmations, customer creation, test
+  classification, identity changes, exports, or other sensitive work. Use
+  conditional state saves/deletes so stale callbacks cannot overwrite or clear
+  a newer operation; combine required write/read state transitions in one
+  conditional statement with a validated `RETURNING` row where supported.
 - Button-only transitions, confirmation results, search/history pagination, and leaderboard navigation normally edit the callback's bot message. Treat `message is not modified` as success and use one send-message fallback when editing is unavailable.
 - Complete a database mutation before displaying success. An edit failure after commit must never repeat or misreport the mutation; keep enough temporary state for an idempotent retry until the success display is delivered.
 - Bind each pending purchase confirmation to the earning-policy identifier used

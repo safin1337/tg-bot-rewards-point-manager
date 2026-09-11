@@ -59,6 +59,24 @@ export const toolsMenuMessage = (): string =>
 export const unsupportedNonTextMessage = (): string =>
   `${BRAND}\n\n⚠️ Images and other non-text messages are not supported. Please send text, use the available buttons, or use /cancel.`;
 
+export const quickBuyPromptMessage = (): string => `${BRAND}
+
+⚡ <b>Quick Buy</b>
+
+Send the customer's WhatsApp number on the first line and the positive whole-number purchase amount on the next line.
+
+Example:
+<code>017776-22294
+2950</code>
+
+The purchase will be recorded immediately without a confirmation screen.`;
+
+export const quickBuyInvalidInputMessage = (): string => `⚠️ Invalid input.
+Send the WhatsApp number on first line and
+purchase amount on the next line.
+
+No customer was created and no points were assigned.`;
+
 type CustomerSelectionOperation = Exclude<Operation, "ADD_CUSTOMER" | "EXPORT" | "LEADERBOARD">;
 
 const CUSTOMER_SELECTION_OPERATIONS = {
@@ -261,11 +279,13 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 • /addcustomer — register a zero-point customer.
 • /managecustomer — add, change, or remove a customer's current identifiers.
 • /tools — open identity, test-account, manual-points, export, and help tools.
+• /testaccounts — open test-account management directly.
 • Test-account behavior is controlled by the documented APP_CONFIG analytics switches.
 • For purchase, points, redemption, balance, history, or customer management, search by WhatsApp phone, WhatsApp username, or Telegram username.
 • Phone search accepts exactly the final 4 or 5 digits or a complete number; username search is exact and case-insensitive.
 • Spaces and supported hyphens are accepted in complete phone numbers.
 • /purchase — ${earningHelp}. Any fractional points resulting from the calculation are retained and rounded half-up to four decimal places before storage.
+• /quickbuy — immediately record a purchase from exactly two lines: a complete WhatsApp number first, then a positive whole-number BDT amount. It creates a normal zero-point phone customer when no exact phone match exists and does not accept usernames.
 • /addpoints — add a positive value with up to four decimal places and an optional note.
 • /redeem — enter a positive value with up to four decimal places, or use Redeem All Points to select the exact stored balance; confirmation is still required.
 • Telegram point amounts display with two decimals using standard half-up rounding.
@@ -276,6 +296,7 @@ export const helpMessageFromConfig = (config: AppConfiguration): string => {
 • /history — show newest transactions first.
 • /export — send customer and/or transaction CSV files.
 • /leaderboard — view weekly/monthly gross earned points or reset the current period.
+• /help — show these instructions.
 • /cancel — cancel the active operation.
 • /restart — restart the active operation from its first step.`;
 };

@@ -2,7 +2,7 @@ import { dashboardKeyboard, toolsKeyboard } from "../telegram/keyboards";
 import { BRAND, dashboardMessage, helpMessage, toolsMenuMessage } from "../telegram/messages";
 import type { Operation } from "../types/models";
 import type { WorkflowContext } from "./context";
-import { showDashboard, startOperation } from "./common";
+import { showDashboard, startOperation, startQuickBuy } from "./common";
 
 const COMMAND_OPERATIONS: Readonly<Record<string, Operation>> = {
   purchase: "PURCHASE",
@@ -12,6 +12,7 @@ const COMMAND_OPERATIONS: Readonly<Record<string, Operation>> = {
   history: "HISTORY",
   addcustomer: "ADD_CUSTOMER",
   managecustomer: "MANAGE_CUSTOMER",
+  testaccounts: "MANAGE_TEST_ACCOUNT",
   export: "EXPORT",
   leaderboard: "LEADERBOARD"
 };
@@ -42,6 +43,10 @@ export const handleCommand = async (
     await context.telegram.sendMessage(chatId, helpMessage());
     return true;
   }
+  if (command === "quickbuy") {
+    await startQuickBuy(context, adminId, chatId, updateId);
+    return true;
+  }
   if (command === "cancel") {
     await context.states.clear(adminId);
     const summary = await context.dashboard.summary();
@@ -65,7 +70,14 @@ export const handleCommand = async (
       await showDashboard(context, chatId);
     } else {
       await context.telegram.sendMessage(chatId, `${BRAND}\n\n🔄 The operation has been restarted.`);
-      await startOperation(context, adminId, chatId, current.state.activeOperation, updateId);
+      if (
+        current.state.activeOperation === "PURCHASE"
+        && current.state.currentStep === "AWAIT_QUICK_PURCHASE"
+      ) {
+        await startQuickBuy(context, adminId, chatId, updateId);
+      } else {
+        await startOperation(context, adminId, chatId, current.state.activeOperation, updateId);
+      }
     }
     return true;
   }

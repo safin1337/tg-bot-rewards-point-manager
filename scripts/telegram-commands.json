@@ -1,0 +1,10 @@
+[
+  { "command": "start", "description": "Open the rewards dashboard" },
+  { "command": "purchase", "description": "Record a customer purchase" },
+  { "command": "quickbuy", "description": "Record a two-line purchase immediately" },
+  { "command": "redeem", "description": "Redeem customer points" },
+  { "command": "testaccounts", "description": "Manage test accounts" },
+  { "command": "tools", "description": "Open administrator tools" },
+  { "command": "restart", "description": "Restart the current operation" },
+  { "command": "cancel", "description": "Cancel the current operation" }
+]

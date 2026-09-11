@@ -1,4 +1,4 @@
-# Telegram Loyalty Rewards Point Manager V2.0.9 database design
+# Telegram Loyalty Rewards Point Manager V2.0.10 database design
 
 ## Sources of truth
 
@@ -72,6 +72,15 @@ conversation operation constraint for test-account management. Existing
 customers, balances, identifiers, transactions, receipts, aggregates, and
 workflow rows are preserved. Disposable pre-release test redemptions are
 intentionally not backfilled, so the business lifetime total starts at zero.
+
+V2.0.10 adds no schema migration. Quick Buy retains `PURCHASE` as the operation
+and transaction type and uses `AWAIT_QUICK_PURCHASE` as a validated workflow
+step in the unconstrained `current_step` text column. Conversation-state
+start/save methods submit their write and validated read-back in one
+conditional SQL statement with `RETURNING`. Save statements match the operation
+start ID and a strictly advancing state-version timestamp, so a concurrent
+stale transition cannot overwrite a newer one, and the returned D1 row is still
+validated before application use.
 
 Two-decimal point formatting is a Telegram presentation rule only. It is
 calculated from integer point units with half-up rounding and is never stored

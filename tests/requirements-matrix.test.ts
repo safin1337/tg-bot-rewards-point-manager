@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import commands from "../scripts/telegram-commands.json";
 import { extractCommand } from "../src/workflows/command-handler";
 import {
   backCancelKeyboard,
@@ -14,12 +15,14 @@ describe("registered command routing", () => {
   it.each([
     "start",
     "purchase",
+    "quickbuy",
     "addpoints",
     "redeem",
     "balance",
     "history",
     "addcustomer",
     "managecustomer",
+    "testaccounts",
     "export",
     "leaderboard",
     "restart",
@@ -32,10 +35,32 @@ describe("registered command routing", () => {
   });
 });
 
+describe("visible Telegram command menu", () => {
+  it("registers only the compact v2.0.10 command list", () => {
+    expect(commands.map(({ command }) => command)).toEqual([
+      "start",
+      "purchase",
+      "quickbuy",
+      "redeem",
+      "testaccounts",
+      "tools",
+      "restart",
+      "cancel"
+    ]);
+    expect(new Set(commands.map(({ command }) => command)).size).toBe(commands.length);
+    for (const { command, description } of commands) {
+      expect(command).toMatch(/^[a-z0-9_]{1,32}$/);
+      expect(description.length).toBeGreaterThan(0);
+      expect(description.length).toBeLessThanOrEqual(256);
+    }
+  });
+});
+
 describe("help requirement matrix", () => {
   it.each([
     "/addcustomer",
     "/managecustomer",
+    "/testaccounts",
     "WhatsApp username",
     "Telegram username",
     "final 4 or 5",
@@ -46,6 +71,7 @@ describe("help requirement matrix", () => {
     "rounded half-up to four decimal places before storage",
     "fractional points",
     "/addpoints",
+    "/quickbuy",
     "/redeem",
     "Redeem All Points",
     "rounded half-up",
@@ -53,6 +79,7 @@ describe("help requirement matrix", () => {
     "/history",
     "/export",
     "/leaderboard",
+    "/help",
     "/cancel",
     "/restart",
     "display with two decimals using standard half-up rounding",

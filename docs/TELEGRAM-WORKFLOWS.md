@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-V2.0.9 uses a hybrid message model to reduce clutter without making
+V2.0.10 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
@@ -20,6 +20,35 @@ the generated heading remains `SoulShop Rewards Point System`.
   Accounts, Add Points Manually, Export Data, Help, and Back to Dashboard on
   separate full-width rows. Direct legacy commands remain routable even when
   omitted from BotFather's shorter visible command list.
+- `/testaccounts` opens Manage Test Accounts directly. The visible Telegram
+  command menu is `/start`, `/purchase`, `/quickbuy`, `/redeem`,
+  `/testaccounts`, `/tools`, `/restart`, and `/cancel`; commands omitted from
+  that suggestion list remain manually routable and stay in `/help`.
+
+## Quick Buy
+
+- `/quickbuy` starts a dedicated `AWAIT_QUICK_PURCHASE` step inside the normal
+  purchase operation. `/restart` returns to that same step instead of opening
+  customer-search choices.
+- The administrator must send exactly two non-empty lines: a complete WhatsApp
+  phone first and a positive whole-number BDT purchase amount second. The phone
+  uses the shared Unicode-whitespace and supported-hyphen normalization rules;
+  the amount accepts digits only.
+- The complete message, normalized phone, amount, and calculated point units
+  are validated before a customer lookup or write. Any validation failure keeps
+  the workflow active and creates no customer, point mutation, transaction,
+  receipt, or leaderboard entry.
+- An exact normalized phone match is authoritative. With no match, the Worker
+  idempotently creates a normal phone-only customer at zero points, then records
+  the purchase. WhatsApp and Telegram usernames are not accepted and
+  username-only customers are never inferred or merged.
+- There is intentionally no confirmation panel. The purchase still uses the
+  centralized earning-policy calculation and complete atomic reward mutation,
+  expected-balance, high-water-mark, receipt, leaderboard, and retention path.
+- State is cleared only after the normal purchase-success receipt is delivered.
+  A Telegram retry after commit reuses the completed receipt and cannot assign
+  points twice. An interruption between customer creation and mutation can
+  leave only a valid zero-balance customer, which the retry safely reuses.
 
 ## Non-text Telegram updates
 
@@ -280,10 +309,20 @@ receipts/high-water marks, and reset receipts make that retry idempotent. The
 business operation is never run again or described as failed merely because
 its success display could not be delivered.
 
-Every callback is answered before workflow database work, including
-unauthorized, stale, duplicate, malformed, expired, and missing-message
-callbacks. Authorization, operation-start update IDs, and rotated state tokens
-are checked before any customer query or mutation.
+Every callback acknowledgement request starts immediately. For an authorized
+callback it runs concurrently with state loading and navigation, and both
+promises remain awaited before the webhook response; there are no floating
+promises. Sensitive confirmations refresh state again before customer,
+classification, reset, export, or reward mutation. Authorization,
+operation-start update IDs, and rotated state tokens are checked before any
+customer query or mutation.
+
+Conversation-state start/save operations use one conditional SQL statement
+with `RETURNING` for the write and validated read-back. Saves match the
+operation start ID and a strictly advancing state-version timestamp so
+concurrent stale navigation cannot overwrite a newer transition. This removes
+one D1 network round trip without caching request state globally or moving a
+required mutation or success delivery into background work.
 
 ## Earning-policy deployment boundary
 

@@ -5,6 +5,7 @@ import { customerPrimaryLabel } from "../domain/customer-identity";
 import {
   backCancelKeyboard,
   addCustomerIdentityKeyboard,
+  cancelKeyboard,
   exportKeyboard,
   historyKeyboard,
   leaderboardMenuKeyboard,
@@ -24,6 +25,7 @@ import {
   manageCustomerMessage,
   manageTestAccountMessage,
   dashboardMessage,
+  quickBuyPromptMessage,
   selectionMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
@@ -115,6 +117,24 @@ export const startOperation = async (
       target
     );
   }
+  return state;
+};
+
+export const startQuickBuy = async (
+  context: WorkflowContext,
+  adminId: string,
+  chatId: number,
+  updateId: number
+): Promise<ConversationState> => {
+  const state = await context.states.start(
+    adminId,
+    "PURCHASE",
+    "AWAIT_QUICK_PURCHASE",
+    updateId
+  );
+  await context.telegram.sendMessage(chatId, quickBuyPromptMessage(), {
+    replyMarkup: cancelKeyboard()
+  });
   return state;
 };
 
@@ -221,7 +241,7 @@ export const promptAfterSelection = async (
   }
   if (state.activeOperation === "BALANCE") {
     const { balanceMessage } = await import("../telegram/messages");
-    await context.states.clear(state.administratorTelegramId);
+    await context.states.clearIfCurrent(state);
     await display(context, chatId, balanceMessage(customer), undefined, target);
     return;
   }

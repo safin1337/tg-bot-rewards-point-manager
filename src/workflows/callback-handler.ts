@@ -10,7 +10,7 @@ import {
 } from "../domain/customer-identity";
 import { leaderboardPeriods } from "../domain/leaderboard";
 import { EARNING_POLICY_ID } from "../domain/rewards";
-import { newStateToken } from "../database/state-repository";
+import { newStateToken, type StateLookup } from "../database/state-repository";
 import {
   backCancelKeyboard,
   addCustomerIdentityKeyboard,
@@ -87,13 +87,14 @@ const stale = async (context: WorkflowContext, target: ActiveMessageTarget): Pro
   );
 };
 
-const stateForToken = async (
+const resolveStateForToken = async (
   context: WorkflowContext,
   adminId: string,
   target: ActiveMessageTarget,
-  token: string
+  token: string,
+  initialLookup?: StateLookup
 ): Promise<ConversationState | null> => {
-  const result = await context.states.get(adminId);
+  const result = initialLookup ?? await context.states.get(adminId);
   if (result.state === null) {
     await display(
       context,
@@ -180,7 +181,7 @@ const confirmMutation = async (
     return;
   }
   if (type === "PURCHASE" && state.payload.earningPolicyId !== EARNING_POLICY_ID) {
-    await context.states.clear(state.administratorTelegramId);
+    await context.states.clearIfCurrent(state);
     await display(
       context,
       target,
@@ -219,10 +220,10 @@ const confirmMutation = async (
         redemptionSuccessMessage(result.customer, state.payload.pointUnits, result.transactionRewardRoundedBdt)
       );
     }
-    await context.states.clear(state.administratorTelegramId);
+    await context.states.clearIfCurrent(state);
   } catch (error: unknown) {
     if (error instanceof DomainError && (error.code === "BALANCE_CONFLICT" || error.code === "INSUFFICIENT_BALANCE")) {
-      await context.states.clear(state.administratorTelegramId);
+      await context.states.clearIfCurrent(state);
       await display(
         context,
         target,
@@ -284,7 +285,7 @@ const handleExport = async (
     }
     await context.idempotency.complete(updateId);
     await display(context, target, `${BRAND}\n\n✅ Export sent successfully.`);
-    await context.states.clear(state.administratorTelegramId);
+    await context.states.clearIfCurrent(state);
   } catch (error: unknown) {
     await context.idempotency.fail(updateId);
     if (error instanceof DomainError && error.code === "EXPORT_TOO_LARGE") {
@@ -305,25 +306,44 @@ export const handleCallback = async (
   chatId: number,
   updateId: number,
   data: string,
-  messageId: number | null
+  messageId: number | null,
+  initialLookup: StateLookup
 ): Promise<void> => {
   const target: ActiveMessageTarget = { chatId, messageId };
+  const clearInitialState = async (): Promise<void> => {
+    if (initialLookup.state !== null) {
+      await context.states.clearIfCurrent(initialLookup.state);
+    }
+  };
+  const stateForToken = async (
+    callbackContext: WorkflowContext,
+    callbackAdminId: string,
+    callbackTarget: ActiveMessageTarget,
+    token: string,
+    refresh = false
+  ): Promise<ConversationState | null> => resolveStateForToken(
+    callbackContext,
+    callbackAdminId,
+    callbackTarget,
+    token,
+    refresh ? undefined : initialLookup
+  );
   if (data === "help") {
     await display(context, target, helpMessage(), toolsKeyboard());
     return;
   }
   if (data === "tools") {
-    await context.states.clear(adminId);
+    await clearInitialState();
     await display(context, target, toolsMenuMessage(), toolsKeyboard());
     return;
   }
   if (data === "dashboard") {
-    await context.states.clear(adminId);
+    await clearInitialState();
     await showDashboard(context, chatId, target);
     return;
   }
   if (data === "cancel") {
-    await context.states.clear(adminId);
+    await clearInitialState();
     const summary = await context.dashboard.summary();
     const dashboard = dashboardMessage(summary).replace(`${BRAND}\n\n`, "");
     await display(
@@ -449,7 +469,7 @@ export const handleCallback = async (
 
   match = /^lbc:(w|m):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[2]);
+    const state = await stateForToken(context, adminId, target, match[2], true);
     const type: LeaderboardPeriodType = match[1] === "w" ? "WEEK" : "MONTH";
     if (
       state === null
@@ -463,7 +483,7 @@ export const handleCallback = async (
     }
     const current = leaderboardPeriods(type)[0];
     if (current === undefined || current.key !== state.payload.leaderboardResetPeriodKey) {
-      await context.states.clear(adminId);
+      await context.states.clearIfCurrent(state);
       await stale(context, target);
       return;
     }
@@ -479,7 +499,7 @@ export const handleCallback = async (
       leaderboardResetSuccessMessage(type, result.period.label, result.duplicate),
       dashboardKeyboard()
     );
-    await context.states.clear(adminId);
+    await context.states.clearIfCurrent(state);
     return;
   }
 
@@ -560,7 +580,7 @@ export const handleCallback = async (
 
   match = /^testconfirm:([tc]):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[2]);
+    const state = await stateForToken(context, adminId, target, match[2], true);
     const nextIsTest = match[1] === "t";
     if (
       state === null
@@ -586,7 +606,7 @@ export const handleCallback = async (
         testAccountChangeSuccessMessage(result.customer, result.duplicate),
         toolsKeyboard()
       );
-      await context.states.clear(adminId);
+      await context.states.clearIfCurrent(state);
     } catch (error: unknown) {
       if (!(error instanceof DomainError) || ![
         "IDENTIFIER_STALE",
@@ -596,7 +616,7 @@ export const handleCallback = async (
       }
       const customer = await context.customers.findById(state.selectedCustomerId);
       if (customer === null) {
-        await context.states.clear(adminId);
+        await context.states.clearIfCurrent(state);
         await showDashboard(context, chatId, target);
         return;
       }
@@ -910,7 +930,7 @@ export const handleCallback = async (
 
   match = /^create:([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[1]);
+    const state = await stateForToken(context, adminId, target, match[1], true);
     if (
       state === null
       || state.currentStep !== "CONFIRM_CREATE_FOR_OPERATION"
@@ -1067,7 +1087,7 @@ export const handleCallback = async (
 
   match = /^id(confirm|removeconfirm):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[2]);
+    const state = await stateForToken(context, adminId, target, match[2], true);
     const removing = match[1] === "removeconfirm";
     const pendingIdentifierValue = state?.payload.pendingIdentifierValue;
     if (
@@ -1105,14 +1125,14 @@ export const handleCallback = async (
         identityChangeSuccessMessage(result.customer, type, removing, result.duplicate),
         dashboardKeyboard()
       );
-      await context.states.clear(adminId);
+      await context.states.clearIfCurrent(state);
     } catch (error: unknown) {
       if (!(error instanceof DomainError) || !["IDENTIFIER_CONFLICT", "IDENTIFIER_STALE", "LAST_IDENTIFIER"].includes(error.code)) {
         throw error;
       }
       const customer = await context.customers.findById(state.selectedCustomerId);
       if (customer === null) {
-        await context.states.clear(adminId);
+        await context.states.clearIfCurrent(state);
         await display(context, target, `${BRAND}\n\n${identityFailureMessage(error)}`, dashboardKeyboard());
         return;
       }
@@ -1216,7 +1236,7 @@ export const handleCallback = async (
 
   match = /^confirm:([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[1]);
+    const state = await stateForToken(context, adminId, target, match[1], true);
     if (state === null) return;
     if (state.currentStep === "CONFIRM_ADD_CUSTOMER") {
       const pendingType = state.payload.pendingIdentifierType
@@ -1229,7 +1249,7 @@ export const handleCallback = async (
       const identifier = identifierFromStoredValue(pendingType, pendingValue);
       const result = await context.customers.createZeroBalance(identifier, updateId, new Date().toISOString());
       await display(context, target, addCustomerSuccessMessage(result.customer));
-      await context.states.clear(adminId);
+      await context.states.clearIfCurrent(state);
       return;
     }
     await confirmMutation(context, state, target, updateId);
@@ -1291,7 +1311,7 @@ export const handleCallback = async (
 
   match = /^export:([A-Za-z0-9_-]{6,16}):([cta])$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
-    const state = await stateForToken(context, adminId, target, match[1]);
+    const state = await stateForToken(context, adminId, target, match[1], true);
     if (state === null) return;
     await handleExport(context, state, target, updateId, match[2]);
     return;

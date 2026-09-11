@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { processTelegramUpdate } from "../src/application/bot-controller";
 import { RewardMutationService } from "../src/application/mutation-service";
 import { CustomerRepository } from "../src/database/customer-repository";
@@ -1791,5 +1791,117 @@ describe("active Telegram message behavior", () => {
       method: "sendMessage",
       payload: { chat_id: 123456789 }
     });
+  });
+});
+
+describe("callback navigation latency", () => {
+  it("starts authorized navigation without waiting for callback acknowledgement I/O", async () => {
+    let releaseAcknowledgement: () => void = () => undefined;
+    const acknowledgementGate = new Promise<void>((resolve) => {
+      releaseAcknowledgement = resolve;
+    });
+    let navigationStartedBeforeAcknowledgement = false;
+    let acknowledgementReleased = false;
+    const concurrentFetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = url.split("/").at(-1) ?? "";
+      let payload: Record<string, unknown> = {};
+      if (typeof init?.body === "string") {
+        const parsed: unknown = JSON.parse(init.body);
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          payload = parsed as Record<string, unknown>;
+        }
+      }
+      if (method === "answerCallbackQuery") {
+        return acknowledgementGate.then(() => new Response(JSON.stringify({ ok: true, result: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }));
+      }
+      if (method === "editMessageText") {
+        navigationStartedBeforeAcknowledgement = !acknowledgementReleased;
+        acknowledgementReleased = true;
+        releaseAcknowledgement();
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        ok: true,
+        result: {
+          message_id: typeof payload.message_id === "number" ? payload.message_id : 1,
+          chat: { id: typeof payload.chat_id === "number" ? payload.chat_id : 123456789 }
+        }
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }));
+    }) as typeof fetch;
+    const context = makeWorkflowContext(env.DB, readConfig(env), concurrentFetch);
+    await processTelegramUpdate(context, message(26_000, 123456789, "/purchase"));
+    const state = (await context.states.get("123456789")).state;
+    const safetyRelease = setTimeout(() => {
+      acknowledgementReleased = true;
+      releaseAcknowledgement();
+    }, 1_000);
+
+    try {
+      await processTelegramUpdate(
+        context,
+        callback(26_001, 123456789, `mode:s:${state?.payload.token ?? ""}`)
+      );
+    } finally {
+      clearTimeout(safetyRelease);
+    }
+
+    expect(navigationStartedBeforeAcknowledgement).toBe(true);
+    expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_SEARCH");
+  });
+
+  it("finishes authorized navigation when Telegram cannot acknowledge the callback", async () => {
+    const acknowledgementFailureFetch = ((input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = url.split("/").at(-1) ?? "";
+      let payload: Record<string, unknown> = {};
+      if (typeof init?.body === "string") {
+        const parsed: unknown = JSON.parse(init.body);
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          payload = parsed as Record<string, unknown>;
+        }
+      }
+      if (method === "answerCallbackQuery") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ok: false,
+          description: "Bad Request: query is too old"
+        }), {
+          status: 400,
+          headers: { "content-type": "application/json" }
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({
+        ok: true,
+        result: {
+          message_id: typeof payload.message_id === "number" ? payload.message_id : 1,
+          chat: { id: typeof payload.chat_id === "number" ? payload.chat_id : 123456789 }
+        }
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      }));
+    }) as typeof fetch;
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const context = makeWorkflowContext(env.DB, readConfig(env), acknowledgementFailureFetch);
+      await processTelegramUpdate(context, message(26_010, 123456789, "/purchase"));
+      const state = (await context.states.get("123456789")).state;
+
+      await expect(processTelegramUpdate(
+        context,
+        callback(26_011, 123456789, `mode:s:${state?.payload.token ?? ""}`)
+      )).resolves.toBeUndefined();
+
+      expect((await context.states.get("123456789")).state?.currentStep).toBe("AWAIT_SEARCH");
+      expect(log).toHaveBeenCalledOnce();
+      expect(String(log.mock.calls[0]?.[0])).not.toContain("mode:s:");
+    } finally {
+      log.mockRestore();
+    }
   });
 });

@@ -2,6 +2,54 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.0.10] - 2026-09-12
+
+### Quick Buy
+
+- Added the administrator-only `/quickbuy` workflow for rush-time purchases.
+  It accepts exactly two lines: a complete WhatsApp number followed by a
+  positive whole-number BDT amount, then records the purchase without a
+  separate confirmation screen.
+- Reused the shared phone normalization, centralized earning policy, exact
+  integer point units, safe-integer validation, expected-balance update,
+  mutation receipt, leaderboard aggregation, and bounded-retention pipeline.
+- Added automatic normal, phone-only, zero-balance customer creation when the
+  normalized WhatsApp number has no exact match. Existing username-only
+  customers are never guessed, merged, or selected by Quick Buy.
+- Kept invalid input at the Quick Buy step and completed all input validation
+  before customer lookup, creation, or reward mutation. Decimal or decorated
+  amounts, usernames, suffixes, malformed phones, missing/blank/extra lines,
+  and unsupported characters are rejected with the approved concise response.
+- Preserved post-commit delivery safety: state remains available until the
+  final purchase receipt is delivered, and a repeated Telegram update reuses
+  the completed mutation receipt without assigning points twice.
+
+### Commands and navigation
+
+- Added `/testaccounts` as a direct route to the existing Manage Test Accounts
+  workflow.
+- Reduced Telegram's visible suggestion menu to `/start`, `/purchase`,
+  `/quickbuy`, `/redeem`, `/testaccounts`, `/tools`, `/restart`, and `/cancel`.
+  Hidden legacy commands remain manually routable and documented in `/help`.
+- Started callback-query acknowledgement concurrently with authorized callback
+  routing while still awaiting both operations before completing the webhook.
+  Financial and customer mutations continue to refresh and validate state
+  before execution.
+- Reduced each conversation-state start/save transition from separate write
+  and read calls to one conditional SQL statement with a validated `RETURNING`
+  row, removing a database round trip while detecting stale-state races.
+
+### Compatibility and validation
+
+- Added no D1 schema migration or data backfill. V2.0.10 uses the V2.0.9 schema
+  with migrations through `0009_dashboard_and_test_accounts.sql` applied.
+- Added command-list, validation, normalization, customer-creation,
+  existing-customer, restart/cancel, mutation, and delivery-retry regression
+  coverage and updated the installation, workflow, database, and release docs.
+- No production migration, deployment, webhook update, Telegram command
+  registration, credential operation, commit, push, or tag was performed by
+  this work.
+
 ## [2.0.9] - 2026-08-25
 
 ### Informative business dashboard

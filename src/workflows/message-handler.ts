@@ -30,7 +30,9 @@ import {
   createCustomerForOperationConfirmationMessage,
   existingCustomerMessage,
   identityChangeConfirmationMessage,
-  manageCustomerMessage
+  manageCustomerMessage,
+  purchaseSuccessMessage,
+  quickBuyInvalidInputMessage
 } from "../telegram/messages";
 import { escapeHtml } from "../utils/html";
 import type { ConversationState } from "../types/models";
@@ -41,6 +43,81 @@ const friendlyDomainError = (error: DomainError): string => {
   if (error.code === "POINT_PRECISION") return "⚠️ Points may have no more than four decimal places.";
   if (error.code === "INSUFFICIENT_BALANCE") return "⚠️ This customer does not have enough points.";
   return `⚠️ ${escapeHtml(error.message)}`;
+};
+
+interface QuickBuyInput {
+  phone: ReturnType<typeof normalizePhone>;
+  amountBdt: number;
+  pointUnits: number;
+}
+
+const parseQuickBuyInput = (text: string): QuickBuyInput => {
+  const lines = text.split(/\r\n|\n|\r/);
+  if (lines.length !== 2 || lines[0] === undefined || lines[1] === undefined) {
+    throw new DomainError("INVALID_PURCHASE", "Quick Buy requires exactly two lines.");
+  }
+  const phone = normalizePhone(lines[0]);
+  const amountBdt = parsePurchaseAmount(lines[1]);
+  return {
+    phone,
+    amountBdt,
+    pointUnits: purchaseToPointUnits(amountBdt)
+  };
+};
+
+const handleQuickBuy = async (
+  context: WorkflowContext,
+  state: ConversationState,
+  chatId: number,
+  text: string,
+  updateId: number
+): Promise<void> => {
+  let input: QuickBuyInput;
+  try {
+    input = parseQuickBuyInput(text);
+  } catch (error: unknown) {
+    if (!(error instanceof DomainError)) throw error;
+    await context.telegram.sendMessage(chatId, quickBuyInvalidInputMessage(), {
+      replyMarkup: cancelKeyboard()
+    });
+    return;
+  }
+
+  const current = await context.states.get(state.administratorTelegramId);
+  if (
+    current.state === null
+    || current.state.activeOperation !== "PURCHASE"
+    || current.state.currentStep !== "AWAIT_QUICK_PURCHASE"
+    || current.state.operationStartedUpdateId !== state.operationStartedUpdateId
+    || current.state.payload.token !== state.payload.token
+  ) {
+    await context.telegram.sendMessage(
+      chatId,
+      `${BRAND}\n\n⚠️ Quick Buy is no longer active. No customer was created and no points were assigned. Use /quickbuy to start again.`
+    );
+    return;
+  }
+
+  const existing = await context.customers.findByPhone(input.phone.normalized);
+  const customer = existing ?? (await context.customers.createZeroBalance(
+    input.phone,
+    updateId,
+    new Date().toISOString()
+  )).customer;
+  const result = await context.mutations.mutate({
+    customerId: customer.id,
+    type: "PURCHASE",
+    pointUnits: input.pointUnits,
+    purchaseAmountBdt: input.amountBdt,
+    note: null,
+    telegramUpdateId: updateId,
+    expectedBalanceUnits: customer.pointBalanceUnits
+  });
+  await context.telegram.sendMessage(
+    chatId,
+    purchaseSuccessMessage(result.customer, input.amountBdt, input.pointUnits)
+  );
+  await context.states.clearIfCurrent(current.state);
 };
 
 const parseIdentifier = (
@@ -225,8 +302,19 @@ export const handleStateMessage = async (
   context: WorkflowContext,
   state: ConversationState,
   chatId: number,
-  text: string
+  text: string,
+  updateId: number
 ): Promise<void> => {
+  if (state.currentStep === "AWAIT_QUICK_PURCHASE") {
+    await handleQuickBuy(
+      context,
+      state,
+      chatId,
+      text,
+      updateId
+    );
+    return;
+  }
   if (state.currentStep === "AWAIT_SEARCH") {
     let digits: string;
     try {

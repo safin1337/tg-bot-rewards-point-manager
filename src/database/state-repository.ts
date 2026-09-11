@@ -8,13 +8,18 @@ export const newStateToken = (): string => {
   return Array.from(bytes, (value) => value.toString(36).padStart(2, "0")).join("").slice(0, 10);
 };
 
+export interface StateLookup {
+  state: ConversationState | null;
+  expired: boolean;
+}
+
 export class StateRepository {
   constructor(
     private readonly db: D1Database,
     private readonly ttlMinutes: number
   ) {}
 
-  async get(adminId: string): Promise<{ state: ConversationState | null; expired: boolean }> {
+  async get(adminId: string): Promise<StateLookup> {
     const row = await this.db
       .prepare("SELECT * FROM conversation_states WHERE administrator_telegram_id = ?")
       .bind(adminId)
@@ -22,8 +27,8 @@ export class StateRepository {
     if (row === null) return { state: null, expired: false };
     const state = mapConversationState(row);
     if (new Date(state.expiresAtUtc).getTime() <= Date.now()) {
-      await this.clear(adminId);
-      return { state: null, expired: true };
+      const cleared = await this.clearIfCurrent(state);
+      return cleared ? { state: null, expired: true } : this.get(adminId);
     }
     return { state, expired: false };
   }
@@ -39,8 +44,7 @@ export class StateRepository {
     }
     const now = nowIso();
     const payload: StatePayload = { token: newStateToken() };
-    await this.db
-      .prepare(
+    const row = await this.db.prepare(
         `INSERT INTO conversation_states (
            administrator_telegram_id, operation_started_update_id,
            active_operation, current_step, selection_mode,
@@ -58,9 +62,10 @@ export class StateRepository {
            payload_json = excluded.payload_json,
            created_at_utc = excluded.created_at_utc,
            updated_at_utc = excluded.updated_at_utc,
-           expires_at_utc = excluded.expires_at_utc`
-      )
-      .bind(
+           expires_at_utc = excluded.expires_at_utc
+         WHERE conversation_states.operation_started_update_id <= excluded.operation_started_update_id
+         RETURNING *`
+      ).bind(
         adminId,
         operationStartedUpdateId,
         operation,
@@ -69,40 +74,68 @@ export class StateRepository {
         now,
         now,
         addMinutesIso(now, this.ttlMinutes)
-      )
-      .run();
-    const result = await this.get(adminId);
-    if (result.state === null) throw new Error("State creation failed.");
-    return result.state;
+      ).first();
+    if (row === null) throw new Error("A newer workflow operation is already active.");
+    const stored = mapConversationState(row);
+    if (
+      stored.operationStartedUpdateId !== operationStartedUpdateId
+      || stored.activeOperation !== operation
+      || stored.currentStep !== firstStep
+    ) {
+      throw new Error("A newer workflow operation is already active.");
+    }
+    return stored;
   }
 
   async save(state: ConversationState): Promise<ConversationState> {
-    const now = nowIso();
-    const result = await this.db
-      .prepare(
+    const nextUpdatedAtMs = Math.max(Date.now(), new Date(state.updatedAtUtc).getTime() + 1);
+    const nextUpdatedAtUtc = new Date(nextUpdatedAtMs).toISOString();
+    const expiresAtUtc = addMinutesIso(nextUpdatedAtUtc, this.ttlMinutes);
+    const payloadJson = JSON.stringify(state.payload);
+    const row = await this.db.prepare(
         `UPDATE conversation_states SET
            active_operation = ?, current_step = ?, selection_mode = ?,
            selected_customer_id = ?, search_query = ?, search_page = ?,
            payload_json = ?, updated_at_utc = ?, expires_at_utc = ?
-         WHERE administrator_telegram_id = ?`
-      )
-      .bind(
+         WHERE administrator_telegram_id = ?
+           AND operation_started_update_id = ?
+           AND updated_at_utc = ?
+         RETURNING *`
+      ).bind(
         state.activeOperation,
         state.currentStep,
         state.selectionMode,
         state.selectedCustomerId,
         state.searchQuery,
         state.searchPage,
-        JSON.stringify(state.payload),
-        now,
-        addMinutesIso(now, this.ttlMinutes),
-        state.administratorTelegramId
-      )
-      .run();
-    if (result.meta.changes !== 1) throw new Error("State update failed.");
-    const stored = await this.get(state.administratorTelegramId);
-    if (stored.state === null) throw new Error("State update failed.");
-    return stored.state;
+        payloadJson,
+        nextUpdatedAtUtc,
+        expiresAtUtc,
+        state.administratorTelegramId,
+        state.operationStartedUpdateId,
+        state.updatedAtUtc
+      ).first();
+    if (row === null) {
+      throw new Error("Conversation state changed before this transition completed.");
+    }
+    const stored = mapConversationState(row);
+    if (
+      stored.administratorTelegramId !== state.administratorTelegramId
+      || stored.operationStartedUpdateId !== state.operationStartedUpdateId
+      || stored.activeOperation !== state.activeOperation
+      || stored.currentStep !== state.currentStep
+      || stored.selectionMode !== state.selectionMode
+      || stored.selectedCustomerId !== state.selectedCustomerId
+      || stored.searchQuery !== state.searchQuery
+      || stored.searchPage !== state.searchPage
+      || row.payload_json !== payloadJson
+      || stored.createdAtUtc !== state.createdAtUtc
+      || stored.updatedAtUtc !== nextUpdatedAtUtc
+      || stored.expiresAtUtc !== expiresAtUtc
+    ) {
+      throw new Error("Conversation state changed before this transition completed.");
+    }
+    return stored;
   }
 
   async clear(adminId: string): Promise<void> {
@@ -110,5 +143,19 @@ export class StateRepository {
       .prepare("DELETE FROM conversation_states WHERE administrator_telegram_id = ?")
       .bind(adminId)
       .run();
+  }
+
+  async clearIfCurrent(state: ConversationState): Promise<boolean> {
+    const result = await this.db.prepare(
+      `DELETE FROM conversation_states
+       WHERE administrator_telegram_id = ?
+         AND operation_started_update_id = ?
+         AND updated_at_utc = ?`
+    ).bind(
+      state.administratorTelegramId,
+      state.operationStartedUpdateId,
+      state.updatedAtUtc
+    ).run();
+    return result.meta.changes === 1;
   }
 }

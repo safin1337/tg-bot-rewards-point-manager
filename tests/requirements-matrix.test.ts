@@ -36,7 +36,7 @@ describe("registered command routing", () => {
 });
 
 describe("visible Telegram command menu", () => {
-  it("registers only the compact v2.0.10 command list", () => {
+  it("registers only the compact v2.1.0 command list", () => {
     expect(commands.map(({ command }) => command)).toEqual([
       "start",
       "purchase",

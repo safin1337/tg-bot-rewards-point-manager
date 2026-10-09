@@ -217,6 +217,10 @@ export const manageCustomerKeyboard = (customer: Customer, token: string): Inlin
   if (customer.telegramUsername !== null) {
     rows.push([{ text: "🗑️ Remove Telegram Username", callback_data: `idremove:t:${token}` }]);
   }
+  if ([customer.whatsappNumber, customer.whatsappUsername, customer.telegramUsername]
+    .filter((value) => value !== null).length > 1) {
+    rows.push([{ text: "Split and Reset Points", callback_data: `idsplit:${token}` }]);
+  }
   rows.push([backButton(token, "s", "⬅️ Back to Customer Search")]);
   rows.push([{ text: "❌ Cancel", callback_data: "cancel" }]);
   return { inline_keyboard: rows };
@@ -227,6 +231,22 @@ export const identityChangeConfirmKeyboard = (token: string): InlineKeyboardMark
     [{ text: "✅ Confirm Identifier", callback_data: `idconfirm:${token}` }],
     [backButton(token, "i", "⬅️ Back to Identity Management")],
     [{ text: "❌ Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const customerMergeConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "Confirm Merge", callback_data: `idmerge:${token}` }],
+    [backButton(token, "i", "Back to Identity Management")],
+    [{ text: "Cancel", callback_data: "cancel" }]
+  ]
+});
+
+export const customerSplitConfirmKeyboard = (token: string): InlineKeyboardMarkup => ({
+  inline_keyboard: [
+    [{ text: "Confirm Split and Reset", callback_data: `idsplitconfirm:${token}` }],
+    [backButton(token, "i", "Back to Identity Management")],
+    [{ text: "Cancel", callback_data: "cancel" }]
   ]
 });
 

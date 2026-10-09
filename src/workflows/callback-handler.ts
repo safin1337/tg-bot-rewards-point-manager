@@ -1,4 +1,8 @@
 import { DomainError } from "../domain/errors";
+import { CustomerMergeRepository } from "../database/customer-merge-repository";
+import { CustomerSplitRepository } from "../database/customer-split-repository";
+import { customerMergeFingerprint } from "../domain/customer-merge";
+import { customerSplitAccountCount } from "../domain/customer-split";
 import { normalizePhone } from "../domain/phone";
 import {
   customerIdentifierValue,
@@ -22,6 +26,7 @@ import {
   leaderboardResetKeyboard,
   leaderboardResultKeyboard,
   identityRemoveConfirmKeyboard,
+  customerSplitConfirmKeyboard,
   manageCustomerKeyboard,
   manageTestAccountKeyboard,
   testAccountConfirmKeyboard,
@@ -41,6 +46,9 @@ import {
   leaderboardResetConfirmationMessage,
   leaderboardResetSuccessMessage,
   identityChangeSuccessMessage,
+  customerMergeSuccessMessage,
+  customerSplitConfirmationMessage,
+  customerSplitSuccessMessage,
   identifierInputPromptText,
   identityRemoveConfirmationMessage,
   manageCustomerMessage,
@@ -598,7 +606,8 @@ export const handleCallback = async (
         state.selectedCustomerId,
         state.payload.expectedIsTest,
         nextIsTest,
-        new Date().toISOString()
+        new Date().toISOString(),
+        state
       );
       await display(
         context,
@@ -615,6 +624,11 @@ export const handleCallback = async (
         throw error;
       }
       const customer = await context.customers.findById(state.selectedCustomerId);
+      const active = (await context.states.get(adminId)).state;
+      if (active?.updatedAtUtc !== state.updatedAtUtc || active.operationStartedUpdateId !== state.operationStartedUpdateId) {
+        await stale(context, target);
+        return;
+      }
       if (customer === null) {
         await context.states.clearIfCurrent(state);
         await showDashboard(context, chatId, target);
@@ -654,6 +668,8 @@ export const handleCallback = async (
         "AWAIT_IDENTITY_VALUE",
         "CONFIRM_IDENTITY_CHANGE",
         "CONFIRM_IDENTITY_REMOVE",
+        "CONFIRM_CUSTOMER_MERGE",
+        "CONFIRM_CUSTOMER_SPLIT",
         "MANAGE_TEST_ACCOUNT",
         "CONFIRM_TEST_ACCOUNT_CHANGE"
       ];
@@ -740,7 +756,7 @@ export const handleCallback = async (
       if (
         state.activeOperation !== "MANAGE_CUSTOMER"
         || state.selectedCustomerId === null
-        || !["MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE", "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE"].includes(state.currentStep)
+        || !["MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE", "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE", "CONFIRM_CUSTOMER_MERGE", "CONFIRM_CUSTOMER_SPLIT"].includes(state.currentStep)
       ) {
         await stale(context, target);
         return;
@@ -1085,6 +1101,88 @@ export const handleCallback = async (
     return;
   }
 
+  match = /^idsplit(confirm)?:([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[2] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[2], true);
+    if (state === null) return;
+    const confirming = match[1] === "confirm";
+    if (state.activeOperation !== "MANAGE_CUSTOMER" || state.selectedCustomerId === null
+      || state.currentStep !== (confirming ? "CONFIRM_CUSTOMER_SPLIT" : "MANAGE_CUSTOMER")) {
+      await stale(context, target);
+      return;
+    }
+    try {
+      if (confirming) {
+        const result = await new CustomerSplitRepository(context.db).split(state, updateId);
+        await display(context, target, customerSplitSuccessMessage(result.erasedPointUnits, result.accountCount), dashboardKeyboard());
+        await context.states.clearIfCurrent(state);
+      } else {
+        const customer = await context.customers.findById(state.selectedCustomerId);
+        if (customer === null) {
+          await stale(context, target);
+          return;
+        }
+        const count = customerSplitAccountCount(customer);
+        const saved = await context.states.save({ ...state, currentStep: "CONFIRM_CUSTOMER_SPLIT",
+          payload: { token: newStateToken(), splitFingerprint: await customerMergeFingerprint(customer) } });
+        await display(context, target, customerSplitConfirmationMessage(customer, count),
+          customerSplitConfirmKeyboard(saved.payload.token));
+      }
+    } catch (error: unknown) {
+      if (!(error instanceof DomainError)) throw error;
+      const active = (await context.states.get(adminId)).state;
+      if (active?.updatedAtUtc !== state.updatedAtUtc || active.operationStartedUpdateId !== state.operationStartedUpdateId) {
+        await stale(context, target);
+        return;
+      }
+      const customer = await context.customers.findById(state.selectedCustomerId);
+      if (customer === null) {
+        await context.states.clearIfCurrent(state);
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({ ...state, currentStep: "MANAGE_CUSTOMER", payload: { token: newStateToken() } });
+      await display(context, target,
+        `${BRAND}\n\n${escapeHtml(error.message)}\n\nNo accounts were split or reset.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        manageCustomerKeyboard(customer, saved.payload.token));
+    }
+    return;
+  }
+
+  match = /^idmerge:([A-Za-z0-9_-]{6,16})$/.exec(data);
+  if (match?.[1] !== undefined) {
+    const state = await stateForToken(context, adminId, target, match[1], true);
+    if (state === null) return;
+    if (state.activeOperation !== "MANAGE_CUSTOMER" || state.currentStep !== "CONFIRM_CUSTOMER_MERGE"
+      || state.selectedCustomerId === null) {
+      await stale(context, target);
+      return;
+    }
+    try {
+      const result = await new CustomerMergeRepository(context.db).merge(state, updateId);
+      await display(context, target, customerMergeSuccessMessage(result.customer, result.mergedBalanceUnits), dashboardKeyboard());
+      await context.states.clearIfCurrent(state);
+    } catch (error: unknown) {
+      if (!(error instanceof DomainError)) throw error;
+      const customer = await context.customers.findById(state.selectedCustomerId);
+      const current = (await context.states.get(adminId)).state;
+      if (current?.updatedAtUtc !== state.updatedAtUtc || current.operationStartedUpdateId !== state.operationStartedUpdateId) {
+        await stale(context, target);
+        return;
+      }
+      if (customer === null) {
+        await context.states.clearIfCurrent(state);
+        await stale(context, target);
+        return;
+      }
+      const saved = await context.states.save({ ...state, currentStep: "MANAGE_CUSTOMER", payload: { token: newStateToken() } });
+      await display(context, target,
+        `${BRAND}\n\n${escapeHtml(error.message)}\n\nNo records were merged or changed.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        manageCustomerKeyboard(customer, saved.payload.token));
+    }
+    return;
+  }
+
   match = /^id(confirm|removeconfirm):([A-Za-z0-9_-]{6,16})$/.exec(data);
   if (match?.[1] !== undefined && match[2] !== undefined) {
     const state = await stateForToken(context, adminId, target, match[2], true);
@@ -1117,7 +1215,8 @@ export const handleCallback = async (
         type,
         state.payload.expectedIdentifierValue,
         nextIdentifier,
-        new Date().toISOString()
+        new Date().toISOString(),
+        state
       );
       await display(
         context,
@@ -1131,6 +1230,11 @@ export const handleCallback = async (
         throw error;
       }
       const customer = await context.customers.findById(state.selectedCustomerId);
+      const active = (await context.states.get(adminId)).state;
+      if (active?.updatedAtUtc !== state.updatedAtUtc || active.operationStartedUpdateId !== state.operationStartedUpdateId) {
+        await stale(context, target);
+        return;
+      }
       if (customer === null) {
         await context.states.clearIfCurrent(state);
         await display(context, target, `${BRAND}\n\n${identityFailureMessage(error)}`, dashboardKeyboard());

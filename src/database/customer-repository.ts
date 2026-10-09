@@ -3,13 +3,20 @@ import type { CustomerIdentifierInput, CustomerIdentifierType } from "../domain/
 import { customerIdentifierValue } from "../domain/customer-identity";
 import type { NormalizedPhone } from "../domain/phone";
 import { validateSearchDigits } from "../domain/phone";
-import type { Customer } from "../types/models";
+import type { ConversationState, Customer } from "../types/models";
 import { mapCustomer } from "./validation";
 import { APP_RUNTIME_CONFIG } from "../config/app-config";
 
 export interface CustomerSearchPage { customers: Customer[]; hasNext: boolean; }
 export interface IdentifierChangeResult { customer: Customer; changed: boolean; duplicate: boolean; }
 export interface TestAccountChangeResult { customer: Customer; changed: boolean; duplicate: boolean; }
+
+const activeStatePredicate = `AND EXISTS (SELECT 1 FROM conversation_states
+  WHERE administrator_telegram_id = ? AND operation_started_update_id = ?
+    AND updated_at_utc = ? AND expires_at_utc > ?)`;
+const activeStateValues = (state: ConversationState, timestamp: string): (number | string)[] => [
+  state.administratorTelegramId, state.operationStartedUpdateId, state.updatedAtUtc, timestamp
+];
 
 const nextValue = (identifier: CustomerIdentifierInput | null): string | null => {
   if (identifier === null) return null;
@@ -57,8 +64,10 @@ export class CustomerRepository {
 
   async findByCreationUpdateId(updateId: number): Promise<Customer | null> {
     const row = await this.db.prepare(
-      "SELECT * FROM customers WHERE creation_telegram_update_id = ?"
-    ).bind(updateId).first();
+      `SELECT * FROM customers WHERE creation_telegram_update_id = ?
+       OR id IN (SELECT target_customer_id FROM customer_merge_receipts
+                 WHERE source_creation_update_id = ?)`
+    ).bind(updateId, updateId).first();
     return row === null ? null : mapCustomer(row);
   }
 
@@ -144,7 +153,8 @@ export class CustomerRepository {
     type: CustomerIdentifierType,
     expectedValue: string | null,
     nextIdentifier: CustomerIdentifierInput | null,
-    timestamp: string
+    timestamp: string,
+    state?: ConversationState
   ): Promise<IdentifierChangeResult> {
     if (nextIdentifier !== null && nextIdentifier.type !== type) {
       throw new Error("Identifier type does not match the requested change.");
@@ -168,6 +178,8 @@ export class CustomerRepository {
       }
     }
 
+    const statePredicate = state === undefined ? "" : activeStatePredicate;
+    const stateValues = state === undefined ? [] : activeStateValues(state, timestamp);
     let statement: D1PreparedStatement;
     switch (type) {
       case "WHATSAPP_PHONE": {
@@ -175,10 +187,10 @@ export class CustomerRepository {
         statement = this.db.prepare(
           `UPDATE customers SET whatsapp_number = ?, phone_last4 = ?, phone_last5 = ?, updated_at_utc = ?
            WHERE id = ? AND ((? IS NULL AND whatsapp_number IS NULL)
-             OR whatsapp_number = ? COLLATE BINARY)`
+             OR whatsapp_number = ? COLLATE BINARY) ${statePredicate}`
         ).bind(
           phone?.normalized ?? null, phone?.last4 ?? null, phone?.last5 ?? null,
-          timestamp, customerId, expectedValue, expectedValue
+          timestamp, customerId, expectedValue, expectedValue, ...stateValues
         );
         break;
       }
@@ -186,15 +198,15 @@ export class CustomerRepository {
         statement = this.db.prepare(
           `UPDATE customers SET whatsapp_username = ?, updated_at_utc = ?
            WHERE id = ? AND ((? IS NULL AND whatsapp_username IS NULL)
-             OR whatsapp_username = ? COLLATE BINARY)`
-        ).bind(requested, timestamp, customerId, expectedValue, expectedValue);
+             OR whatsapp_username = ? COLLATE BINARY) ${statePredicate}`
+        ).bind(requested, timestamp, customerId, expectedValue, expectedValue, ...stateValues);
         break;
       case "TELEGRAM_USERNAME":
         statement = this.db.prepare(
           `UPDATE customers SET telegram_username = ?, updated_at_utc = ?
            WHERE id = ? AND ((? IS NULL AND telegram_username IS NULL)
-             OR telegram_username = ? COLLATE BINARY)`
-        ).bind(requested, timestamp, customerId, expectedValue, expectedValue);
+             OR telegram_username = ? COLLATE BINARY) ${statePredicate}`
+        ).bind(requested, timestamp, customerId, expectedValue, expectedValue, ...stateValues);
         break;
     }
 
@@ -223,7 +235,8 @@ export class CustomerRepository {
     customerId: number,
     expectedIsTest: boolean,
     nextIsTest: boolean,
-    timestamp: string
+    timestamp: string,
+    state?: ConversationState
   ): Promise<TestAccountChangeResult> {
     const before = await this.findById(customerId);
     if (before === null) throw new DomainError("IDENTIFIER_STALE", "The selected customer no longer exists.");
@@ -243,16 +256,20 @@ export class CustomerRepository {
       );
     }
 
+    const statePredicate = state === undefined ? "" : activeStatePredicate;
+    const stateValues = state === undefined ? [] : activeStateValues(state, timestamp);
     const statements: D1PreparedStatement[] = [
       this.db.prepare(
         `UPDATE customers SET is_test = ?, updated_at_utc = ?
          WHERE id = ? AND is_test = ?
-           AND (? = 1 OR point_balance_units = 0)`
-      ).bind(nextIsTest ? 1 : 0, timestamp, customerId, expectedIsTest ? 1 : 0, nextIsTest ? 1 : 0)
+           AND (? = 1 OR point_balance_units = 0) ${statePredicate}`
+      ).bind(nextIsTest ? 1 : 0, timestamp, customerId, expectedIsTest ? 1 : 0, nextIsTest ? 1 : 0, ...stateValues)
     ];
     if (nextIsTest && APP_RUNTIME_CONFIG.analytics.testAccounts.excludeFromLeaderboards) {
       statements.push(
-        this.db.prepare("DELETE FROM leaderboard_aggregates WHERE customer_id = ?").bind(customerId)
+        this.db.prepare(`DELETE FROM leaderboard_aggregates WHERE customer_id = ?
+          AND EXISTS (SELECT 1 FROM customers WHERE id = ? AND is_test = 1) ${statePredicate}`)
+          .bind(customerId, customerId, ...stateValues)
       );
     }
     const results = await this.db.batch(statements);

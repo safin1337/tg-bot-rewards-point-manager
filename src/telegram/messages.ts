@@ -496,6 +496,61 @@ ${customerInfoBlock(customer)}
 
 Choose an identifier to add, change, or remove.`;
 
+export const customerMergeConfirmationMessage = (
+  target: Customer,
+  source: Customer,
+  mergedBalanceUnits: number
+): string => `${BRAND}
+
+<b>Confirm Customer Merge</b>
+
+Keep Customer #${target.id}
+${customerInfoBlock(target)}
+Current Points: ${formatPointUnitsForDisplay(target.pointBalanceUnits)} points
+
+Merge Customer #${source.id}
+${customerInfoBlock(source)}
+Current Points: ${formatPointUnitsForDisplay(source.pointBalanceUnits)} points
+
+Combined Balance: ${formatPointUnitsForDisplay(mergedBalanceUnits)} points
+Estimated reward value: BDT ${roundRewardBdt(mergedBalanceUnits)}
+
+Confirm only if both records belong to the same person. Their identifiers and retained history will belong to Customer #${target.id}.
+
+If these accounts are split later, all resulting accounts will start with zero points. Previous balances will not be restored.`;
+
+export const customerSplitConfirmationMessage = (customer: Customer, accountCount: number): string => `${BRAND}
+
+<b>Confirm Split and Reset Points</b>
+
+Customer ID: ${customer.id}
+${customerInfoBlock(customer)}
+Points to Erase: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Resulting Accounts: ${accountCount}
+Balance Per Account: 0.00 points
+
+This will separate all associated identities and erase their current points and leaderboard earnings. Every resulting account will start with zero points. This cannot be undone.
+
+Existing history stays with Customer #${customer.id}. Lifetime redemption totals stay unchanged.`;
+
+export const customerSplitSuccessMessage = (erasedPointUnits: number, accountCount: number): string => `${BRAND}
+
+<b>Customer Split and Points Reset</b>
+
+Points Erased: ${formatPointUnitsForDisplay(erasedPointUnits)} points
+Separate Accounts: ${accountCount}
+Every resulting account started with 0.00 points.`;
+
+export const customerMergeSuccessMessage = (customer: Customer, mergedBalanceUnits: number): string => `${BRAND}
+
+<b>Customers Merged Successfully</b>
+
+Customer ID: ${customer.id}
+${customerInfoBlock(customer)}
+Balance After Merge: ${formatPointUnitsForDisplay(mergedBalanceUnits)} points
+Current reward balance: ${formatPointUnitsForDisplay(customer.pointBalanceUnits)} points
+Estimated reward value: BDT ${customer.roundedRewardBdt}`;
+
 export const manageTestAccountMessage = (customer: Customer): string => `${BRAND}
 
 🧪 <b>Manage Test Account</b>

@@ -94,6 +94,8 @@ export type WorkflowStep =
   | "AWAIT_IDENTITY_VALUE"
   | "CONFIRM_IDENTITY_CHANGE"
   | "CONFIRM_IDENTITY_REMOVE"
+  | "CONFIRM_CUSTOMER_MERGE"
+  | "CONFIRM_CUSTOMER_SPLIT"
   | "MANAGE_TEST_ACCOUNT"
   | "CONFIRM_TEST_ACCOUNT_CHANGE"
   | "AWAIT_QUICK_PURCHASE"
@@ -122,6 +124,10 @@ export interface StatePayload {
   pendingIdentifierValue?: string;
   expectedIdentifierValue?: string | null;
   expectedIsTest?: boolean;
+  mergeSourceCustomerId?: number;
+  mergeTargetFingerprint?: string;
+  mergeSourceFingerprint?: string;
+  splitFingerprint?: string;
   leaderboardResetType?: LeaderboardPeriodType;
   leaderboardResetPeriodKey?: string;
 }

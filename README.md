@@ -1,4 +1,4 @@
-# Telegram Bot: Loyalty Rewards Point Manager
+# Telegram Bot: Loyalty Rewards Point Manager V2.1.0
 
 A production-ready Telegram bot for managing customer loyalty and reward points
 for a business. It allows an authorized administrator to register customers,
@@ -152,6 +152,14 @@ The source is split into domain calculations, validated D1 repositories, atomic 
   to the exact current value so a concurrent change cannot be overwritten.
 - Identity changes do not create reward transactions or change balances,
   history, receipts, or leaderboard totals.
+- When an entered identifier belongs to a compatible second customer,
+  `/managecustomer` offers an explicit merge confirmation. The selected ID
+  survives, exact balances combine, and related records move together.
+  See [Customer Merging](docs/CUSTOMER-MERGING.md) for restrictions, history,
+  leaderboard behavior, and the required migration `0010_customer_merges.sql`.
+- `Split and Reset Points` separates all current identifiers into zero-point
+  accounts after confirmation. It clears leaderboard earnings and keeps history
+  on the original ID. This additionally requires `0011_customer_splits.sql`.
 
 ## Dashboard and test accounts
 
@@ -337,7 +345,7 @@ setup runbook for:
 Do not run remote migrations, deploy, or register a webhook until the guide's
 prerequisites and replacement checklist are complete. Existing SoulShop
 operators preparing this release should also use the
-[V2.0.10 release guide](docs/V2.0.10-RELEASE.md).
+[V2.1.0 release guide](docs/V2.1.0-RELEASE.md).
 
 ## Security summary
 

@@ -1,6 +1,16 @@
-# Telegram Loyalty Rewards Point Manager V2.0.10 database design
+# Telegram Loyalty Rewards Point Manager V2.1.0 database design
 
 ## Sources of truth
+
+`0011_customer_splits.sql` adds durable `customer_split_receipts` for explicit
+administrative splits/resets. A split receipt records its token, original ID,
+update ID, erased units, account count, and UTC time. It is independent of reward
+receipts and must not be manually pruned; retries must never reset later earnings.
+One atomic batch validates the customer and workflow, resets balances/reward BDT,
+creates one account per current identifier, clears the original leaderboard rows,
+invalidates other selected workflows, and advances all resulting high-water marks.
+The existing ID keeps its primary identifier and historical transactions/receipts.
+Lifetime redemption snapshots are unchanged. A split is not a redemption.
 
 `customers` is unbounded. `customers.point_balance_units` is the only source
 of truth for an available point balance, and `rounded_reward_bdt` is
@@ -24,6 +34,26 @@ or alter point units, rounded reward BDT, mutation receipts, or leaderboard
 aggregates. The database rejects removal of the last alias and same-platform
 duplicate claims. There is no identity history table and no `identity_version`
 column.
+
+V2.1.0 customer merges require `0010_customer_merges.sql`. The selected
+customer ID survives; related records are reassigned in one atomic batch and
+the absorbed row is removed. Historical transaction/receipt values remain
+the original snapshots; only their `customer_id` changes. Combined detail is
+then pruned to the newest 40 with corresponding receipts.
+
+`customer_merge_receipts` stores one durable row per absorbed customer: its
+original ID and creation-update ID, original target ID, current surviving ID,
+confirmation token/update ID, exact balance snapshots, and UTC completion time.
+It is independent of bounded reward receipts. These small redirect records
+must remain available to reject duplicate merges and resolve delayed creation
+retries. Subsequent merges update the surviving-ID reference for earlier
+receipts. They contain no phone, username, note, or credential copies.
+
+The merge claim's `valid_guard = 1` CHECK makes a stale customer snapshot or
+workflow fail inside the D1 batch. An integrity guard also aborts inconsistent
+retention. Identity and classification confirmations condition their SQL writes
+on the active state so an in-flight pre-merge confirmation cannot alter the
+surviving account. See [Customer Merging](CUSTOMER-MERGING.md).
 
 `Redeem All Points` reads this exact integer source of truth and carries it into
 the existing expected-balance confirmation and atomic mutation. It does not

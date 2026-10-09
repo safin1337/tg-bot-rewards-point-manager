@@ -1,6 +1,6 @@
 # Fresh Installation Guide
 
-This is the authoritative, detailed setup guide for installing V2.0.10 in a new
+This is the authoritative, detailed setup guide for installing V2.1.0 in a new
 Cloudflare account and connecting a new Telegram bot. Start with the project
 overview and business rules in the [README](../README.md). For branding and
 reward-policy changes, also read [CUSTOMIZATION.md](CUSTOMIZATION.md).
@@ -63,18 +63,18 @@ git --version
 
 ## 2. Open and install
 
-For a fresh Git checkout, clone the repository, select the V2.0.10 release, and
+For a fresh Git checkout, clone the repository, select the V2.1.0 release, and
 install the exact dependencies recorded in `package-lock.json`:
 
 ```powershell
 git clone <YOUR_REPOSITORY_URL>
 Set-Location "<CLONED_PROJECT_DIRECTORY>"
-git checkout v2.0.10
+git checkout v2.1.0
 code .
 npm.cmd ci
 ```
 
-If the project is already downloaded and checked out at V2.0.10, open PowerShell
+If the project is already downloaded and checked out at V2.1.0, open PowerShell
 in that directory and run:
 
 ```powershell
@@ -175,10 +175,16 @@ operation without changing existing balances or retained history. Its lifetime
 counter intentionally starts empty because all pre-release redemptions are
 disposable test activity. Existing installations must back up D1, apply 0009,
 verify the empty snapshot table and default `is_test = 0` values, deploy only
-the matching V2.0.10 Worker, then mark the known test accounts through the bot.
-For an existing V2.0.9 installation, follow the mandatory
-[V2.0.10 release guide](V2.0.10-RELEASE.md). No migration follows 0009 in this
-release.
+the matching Worker, then mark the known test accounts through the bot.
+V2.0.10 introduced Quick Buy without adding a migration after 0009.
+
+V2.1.0 additionally requires `0010_customer_merges.sql` and
+`0011_customer_splits.sql` before running the
+updated Worker. Existing installations must follow the
+[V2.1.0 release guide](V2.1.0-RELEASE.md). See
+[Customer Merging](CUSTOMER-MERGING.md) for feature behavior and dependencies.
+The normal migration command applies all versioned migrations to a fresh
+installation.
 
 For V2.0.2, review [the bounded-storage hotfix runbook](V2.0.2-MIGRATION.md) before any remote action. Migration `0006_bounded_operational_storage.sql` preserves unbounded customers, balances, and aggregates while bounding operational receipts. V2.0.2 removes the compound trigger that caused the V2.0.1 remote migration attempt to fail with `incomplete input`; normal transaction and completed-receipt pruning remains explicit and atomic in the Worker batch. This repository preparation did not apply the corrected migration to production or deploy the Worker.
 

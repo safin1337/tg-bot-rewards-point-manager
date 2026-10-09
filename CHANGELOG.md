@@ -2,6 +2,38 @@
 
 All notable changes to the Telegram Bot: Loyalty Rewards Point Manager are documented in this file.
 
+## [2.1.0] - 2026-10-09
+
+### Split and Reset Points (2026-10-09)
+
+- Added an explicit confirmed split action for customers with multiple current
+  identifiers. Each identifier becomes a separate zero-point account; retained
+  history/receipts remain on the original primary-identifier customer ID.
+- Clears leaderboard earnings without changing lifetime redemption totals or
+  generating a redemption transaction. Preserves test-account classification.
+- Warns on merge and split confirmations that a split erases current points
+  and does not restore previous balances. Split previews show the erased balance.
+- Added migration `0011_customer_splits.sql` and durable split receipts for
+  atomic rollback, concurrent confirmation, and delivery retries. All resulting
+  accounts reject older mutations and later split retries preserve new earnings.
+
+### Confirmed Customer Merging
+
+- Manage Customer Identities offers a merge when an entered identifier belongs
+  to a compatible second customer. Confirmation displays both balances and
+  the combined total; the selected customer ID survives.
+- Combines exact point units and recalculates reward BDT once. Moves retained
+  history/receipts, combines matching leaderboard periods/reset generations,
+  retains the newest 40 combined transactions, and preserves lifetime totals.
+- Adds migration `0010_customer_merges.sql` for durable merge receipts and
+  creation-update redirects. Retries, chained merges, stale workflows, and
+  delayed reward updates retain duplicate protection.
+- Blocks conflicting identifiers, mixed test/normal accounts, unsafe sums,
+  and changed customer snapshots. Identity/classification confirmations check
+  their active workflow inside the database write.
+- Documents operation, dependency behavior, migration order, and rollback in
+  `docs/CUSTOMER-MERGING.md`. Adds Workers-runtime regression coverage.
+
 ## [2.0.10] - 2026-09-12
 
 ### Quick Buy

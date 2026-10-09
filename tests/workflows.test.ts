@@ -1333,7 +1333,7 @@ describe("multi-identifier workflows", () => {
       .toHaveLength(1);
   });
 
-  it("rejects a duplicate alias and returns to a usable identity panel with a fresh token", async () => {
+  it("offers a merge for an owned compatible alias without changing either customer", async () => {
     const context = makeWorkflowContext(env.DB, readConfig(env), fakeFetch);
     await context.customers.createZeroBalance(
       { type: "WHATSAPP_USERNAME", username: { display: "Owned_Name", lookup: "owned_name" } },
@@ -1363,12 +1363,12 @@ describe("multi-identifier workflows", () => {
     const returned = (await context.states.get("123456789")).state;
 
     expect(returned).toMatchObject({
-      currentStep: "MANAGE_CUSTOMER",
+      currentStep: "CONFIRM_CUSTOMER_MERGE",
       selectedCustomerId: target.customer.id
     });
     expect(returned?.payload.token).not.toBe(input?.payload.token);
     expect((await context.customers.findById(target.customer.id))?.whatsappUsername).toBeNull();
-    expect(calls.some((call) => String(call.payload?.text).includes("already belongs"))).toBe(true);
+    expect(calls.some((call) => String(call.payload?.text).includes("Confirm Customer Merge"))).toBe(true);
   });
 
   it("blocks removal of the final alias before confirmation", async () => {

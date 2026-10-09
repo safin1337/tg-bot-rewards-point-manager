@@ -1,4 +1,5 @@
 import { DomainError } from "../domain/errors";
+import { customerMergeFingerprint, mergedCustomerBalance } from "../domain/customer-merge";
 import { normalizePhone, validateSearchDigits } from "../domain/phone";
 import {
   customerIdentifierValue,
@@ -20,6 +21,7 @@ import {
   confirmKeyboard,
   existingCustomerKeyboard,
   identityChangeConfirmKeyboard,
+  customerMergeConfirmKeyboard,
   manageCustomerKeyboard,
   missingCustomerKeyboard,
   skipNoteKeyboard
@@ -30,6 +32,7 @@ import {
   createCustomerForOperationConfirmationMessage,
   existingCustomerMessage,
   identityChangeConfirmationMessage,
+  customerMergeConfirmationMessage,
   manageCustomerMessage,
   purchaseSuccessMessage,
   quickBuyInvalidInputMessage
@@ -254,17 +257,36 @@ const handleManagedIdentifier = async (
   if (customer === null) throw new DomainError("IDENTIFIER_STALE", "The selected customer no longer exists.");
   const owner = await context.customers.findByIdentifier(identifier);
   if (owner !== null && owner.id !== customer.id) {
-    const saved = await context.states.save({
-      ...state,
-      currentStep: "MANAGE_CUSTOMER",
-      payload: { token: newStateToken() }
-    });
-    await context.telegram.sendMessage(
-      chatId,
-      `${BRAND}\n\n⚠️ That ${escapeHtml(identifierTypeLabel(type).toLowerCase())} already belongs to Customer #${owner.id}.\n\nNo records were merged or changed.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
-      { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
-    );
-    return;
+    try {
+      const balance = mergedCustomerBalance(customer, owner);
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "CONFIRM_CUSTOMER_MERGE",
+        payload: {
+          token: newStateToken(),
+          mergeSourceCustomerId: owner.id,
+          mergeTargetFingerprint: await customerMergeFingerprint(customer),
+          mergeSourceFingerprint: await customerMergeFingerprint(owner)
+        }
+      });
+      await context.telegram.sendMessage(chatId, customerMergeConfirmationMessage(customer, owner, balance), {
+        replyMarkup: customerMergeConfirmKeyboard(saved.payload.token)
+      });
+      return;
+    } catch (error: unknown) {
+      if (!(error instanceof DomainError)) throw error;
+      const saved = await context.states.save({
+        ...state,
+        currentStep: "MANAGE_CUSTOMER",
+        payload: { token: newStateToken() }
+      });
+      await context.telegram.sendMessage(
+        chatId,
+        `${BRAND}\n\n${friendlyDomainError(error)}\n\nNo records were merged or changed.\n\n${manageCustomerMessage(customer).replace(`${BRAND}\n\n`, "")}`,
+        { replyMarkup: manageCustomerKeyboard(customer, saved.payload.token) }
+      );
+      return;
+    }
   }
   const requested = identifierInputValue(identifier);
   const current = customerIdentifierValue(customer, type);

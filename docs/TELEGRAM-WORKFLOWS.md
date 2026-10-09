@@ -1,6 +1,6 @@
 # Telegram active-message workflows
 
-V2.0.10 uses a hybrid message model to reduce clutter without making
+V2.1.0 uses a hybrid message model to reduce clutter without making
 typed conversations appear out of order.
 
 The brand name, main heading, closing taglines, leaderboard headings, help
@@ -133,13 +133,39 @@ the generated heading remains `SoulShop Rewards Point System`.
 - A change/removal confirmation stores the exact current value it displayed.
   The SQL update includes that expected value, so a later or concurrent edit is
   rejected as stale rather than overwritten.
-- Duplicate aliases return to a usable management panel and do not merge
-  customers. Invalid values remain at input. The last alias cannot reach a
-  removal mutation.
+- An identifier owned by a compatible second customer opens
+  `CONFIRM_CUSTOMER_MERGE`, showing both IDs, identifiers, balances, and the
+  combined result. `Confirm Merge` keeps the selected customer's ID. Back and
+  Cancel change no customer data. Conflicting same-platform identities and
+  mixed test/normal accounts return to management with an explanation.
+  Invalid values remain at input. The last alias cannot reach a removal mutation.
 - A committed identity change is harmless to retry: if Telegram display fails,
   the repository recognizes that the requested value is already current.
-- Identity management changes only alias columns and `updated_at_utc`; reward
+- Ordinary identity edits change only alias columns and `updated_at_utc`; reward
   balances, transactions, receipts, and leaderboard aggregates are untouched.
+- A confirmed merge combines exact units, moves retained transactions and
+  receipts, combines leaderboard aggregates by period and reset generation,
+  and removes the absorbed customer in one atomic batch. Both customer
+  snapshots and the active workflow must still match the preview. A durable
+  receipt permits retry after a committed merge's success display fails.
+  Details and upgrade instructions are in [Customer Merging](CUSTOMER-MERGING.md).
+
+## Split and Reset Points
+
+- Identity management shows `Split and Reset Points` for accounts with at least
+  two current identifiers, including accounts assembled by adding aliases.
+- Its confirmation shows all identities, the balance to erase, and the number
+  of resulting zero-point accounts. The merge confirmation also warns that
+  later splitting erases points and does not restore old balances.
+- `Confirm Split and Reset` separates every current identity. The existing ID
+  keeps its WhatsApp phone, or its WhatsApp username when there is no phone,
+  along with retained history. Detached usernames receive new zero-point IDs.
+- Both normal and test accounts preserve their classification. Leaderboard
+  earnings are cleared; lifetime redemption totals remain unchanged.
+- Back rotates the token and discards the preview; Cancel exits without writes.
+  Confirm validates the active state and customer snapshot inside one atomic
+  batch. Success state stays until delivery; retries cannot erase later earnings.
+- Ordinary Remove Identifier still only removes an alias; it is not a split.
 
 ## Test-account management
 

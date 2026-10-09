@@ -121,7 +121,7 @@ const STEPS: readonly WorkflowStep[] = [
   "CONFIRM_LEADERBOARD_RESET", "SELECT_ADD_CUSTOMER_IDENTITY",
   "AWAIT_ADD_CUSTOMER_IDENTITY", "MANAGE_CUSTOMER", "AWAIT_IDENTITY_VALUE",
   "CONFIRM_IDENTITY_CHANGE", "CONFIRM_IDENTITY_REMOVE", "MANAGE_TEST_ACCOUNT",
-  "CONFIRM_TEST_ACCOUNT_CHANGE", "AWAIT_QUICK_PURCHASE"
+  "CONFIRM_TEST_ACCOUNT_CHANGE", "AWAIT_QUICK_PURCHASE", "CONFIRM_CUSTOMER_MERGE", "CONFIRM_CUSTOMER_SPLIT"
 ];
 const TRANSACTION_TYPES: readonly TransactionType[] = ["PURCHASE", "MANUAL_ADD", "REDEEM"];
 const LEADERBOARD_PERIOD_TYPES: readonly LeaderboardPeriodType[] = ["WEEK", "MONTH"];
@@ -147,6 +147,22 @@ const parsePayload = (json: string): StatePayload => {
     throw new Error("Invalid conversation state.");
   }
   const payload: StatePayload = { token: row.token };
+  if (row.mergeSourceCustomerId !== undefined) {
+    payload.mergeSourceCustomerId = positiveIntegerField(row, "mergeSourceCustomerId");
+  }
+  for (const key of ["mergeTargetFingerprint", "mergeSourceFingerprint", "splitFingerprint"] as const) {
+    if (row[key] !== undefined) {
+      if (typeof row[key] !== "string" || !/^[a-f0-9]{64}$/.test(row[key])) {
+        throw new Error("Invalid conversation state.");
+      }
+      payload[key] = row[key];
+    }
+  }
+  const mergeFieldCount = [payload.mergeSourceCustomerId, payload.mergeTargetFingerprint, payload.mergeSourceFingerprint]
+    .filter((field) => field !== undefined).length;
+  if (mergeFieldCount !== 0 && mergeFieldCount !== 3) {
+    throw new Error("Invalid conversation state.");
+  }
   for (const key of ["purchaseAmountBdt", "pointUnits", "expectedBalanceUnits"] as const) {
     const field = row[key];
     if (field !== undefined) {

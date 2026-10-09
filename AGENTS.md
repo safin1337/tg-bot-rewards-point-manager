@@ -117,6 +117,32 @@ These rules are mandatory for every future coding agent working in this reposito
 
 ## Data and workflow invariants
 
+- Customer merging is an explicit confirmed action within identity management.
+  Keep the selected customer ID, combine exact units, and recalculate reward
+  BDT once. Reject overlapping identifier slots and mixed test/normal accounts.
+- Merge customer snapshots, active-state validation, durable merge receipt,
+  history/receipt reassignment, leaderboard combination, source removal,
+  combined newest-40 pruning, and integrity guards in one atomic D1 batch.
+  Preserve historical balance snapshots and combine leaderboard earnings only
+  by their original period key and reset generation.
+- Preserve `customer_merge_receipts` redirects for absorbed creation update IDs
+  and chained merges. Never redirect ordinary `findById` calls from a removed
+  ID; stale workflow selections must fail. Advance the surviving mutation
+  high-water mark through the merge update and invalidate other selected states.
+- Keep merge confirmation state until success delivery. Its receipt must
+  prevent duplicate balance addition after a display failure or concurrent retry.
+- Split and Reset Points separates every current identifier into its own
+  zero-balance customer after explicit confirmation. Keep the primary phone,
+  otherwise WhatsApp username, on the existing ID with its history/receipts.
+  Preserve account classification and lifetime redemption totals; clear the
+  selected customer's leaderboard earnings. Never describe this as redemption.
+- Claim a durable split receipt, validate the customer/workflow snapshots,
+  reset balance/reward BDT, detach and create identities, advance all resulting
+  mutation high-water marks, invalidate other selected workflows, and verify
+  integrity in one atomic batch. Retries must not reset subsequent earnings.
+- Both merge and split confirmations must warn that splitting erases points
+  and does not restore previous balances. Split confirmation shows erased units.
+
 - `/addcustomer` and newly created purchase/manual-add customers start with exactly zero point units and zero rounded reward BDT.
 - Zero-point customer creation never creates a reward transaction.
 - When Quick Buy has no exact normalized phone match, create one normal,
